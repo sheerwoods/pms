@@ -1,0 +1,21 @@
+{
+  "name": "hotel-pms",
+  "version": "1.0.0",
+  "private": true,
+  "description": "酒店 PMS 管理系统：房态图 / 订单管理 / 账务管理",
+  "main": "server/index.js",
+  "scripts": {
+    "install:all": "npm install && npm --prefix client install",
+    "dev": "concurrently -k -n SERVER,CLIENT -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "node --disable-warning=ExperimentalWarning server/index.js",
+    "dev:client": "npm --prefix client run dev",
+    "build": "npm --prefix client run build",
+    "start": "node --disable-warning=ExperimentalWarning server/index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
