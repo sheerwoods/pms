@@ -111,15 +111,17 @@ router.get('/finance/report', wrap((req, res) => {
     }
   }
 
-  // 间夜/入住率（统计范围内每日在住房间数）
-  const stays = q(`SELECT * FROM reservations WHERE status IN ('checked_in','checked_out')`);
+  // 间夜/入住率（统计范围内每日在住房间数，多间按 reservation_rooms 计）
+  const stays = q(`SELECT r.*, (SELECT COUNT(*) FROM reservation_rooms rr WHERE rr.reservation_id=r.id) AS assigned_rooms
+                   FROM reservations r WHERE r.status IN ('checked_in','checked_out')`);
   let nightsSold = 0;
   for (let d = start; d <= end; d = addDays(d, 1)) {
-    const occ = stays.filter((s) => {
+    const occ = stays.reduce((sum, s) => {
       const ci = s.actual_check_in ? s.actual_check_in.slice(0, 10) : s.check_in_date;
       const co = s.actual_check_out ? s.actual_check_out.slice(0, 10) : s.check_out_date;
-      return ci <= d && co > d;
-    }).length;
+      if (ci <= d && co > d) return sum + Math.max(1, s.assigned_rooms || 1);
+      return sum;
+    }, 0);
     nightsSold += occ;
   }
   const days = Math.max(1, nightsBetween(start, end) + 1);

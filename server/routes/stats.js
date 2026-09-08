@@ -10,10 +10,13 @@ router.get('/stats/today', wrap((req, res) => {
   const T = today();
   const arrivals = get("SELECT COUNT(*) AS c FROM reservations WHERE status='reserved' AND check_in_date=?", T).c;
   const departures = get("SELECT COUNT(*) AS c FROM reservations WHERE status='checked_in' AND check_out_date=?", T).c;
-  const inHouse = get("SELECT COUNT(*) AS c FROM reservations WHERE status='checked_in'").c;
+  // 在住房间数（多间按 reservation_rooms 计，无子行回退为预订数）
+  const inHouse = get(
+    "SELECT COALESCE(COUNT(*),0) AS c FROM reservation_rooms rr JOIN reservations r ON r.id=rr.reservation_id WHERE r.status='checked_in'"
+  ).c;
   const totalRooms = get('SELECT COUNT(*) AS c FROM rooms').c || 1;
   const ooo = get("SELECT COUNT(*) AS c FROM rooms WHERE status='ooo'").c;
-  const occupied = get("SELECT COUNT(*) AS c FROM reservations WHERE status='checked_in' AND room_id IS NOT NULL").c;
+  const occupied = inHouse;
   const vacant = Math.max(0, totalRooms - ooo - occupied);
   const revenue = get(
     "SELECT COALESCE(SUM(amount),0) AS s FROM folio_items WHERE item_type IN ('room_charge','extra_charge','adj') AND date(created_at)=?",

@@ -2,108 +2,149 @@
   <el-dialog
     :model-value="visible"
     :title="title"
-    width="640px"
+    width="80%"
+    align-center
     :close-on-click-modal="false"
+    class="res-form"
     @update:model-value="(v) => $emit('update:visible', v)"
     @closed="reset"
   >
-    <el-form :model="form" label-width="90px">
-      <el-divider content-position="left">预定信息</el-divider>
-      <el-row :gutter="16">
-        <el-col :span="12">
-          <el-form-item label="预定人" required>
-            <el-input v-model="form.guest_name" placeholder="必填" />
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="电话号码">
-            <el-input v-model="form.guest_phone" placeholder="选填" />
-          </el-form-item>
-        </el-col>
-      </el-row>
-
-      <el-row :gutter="16">
-        <el-col :span="12">
-          <el-form-item label="房间类型">
-            <el-select v-model="form.booking_type" style="width: 100%">
-              <el-option v-for="k in ROOM_KINDS" :key="k" :label="k" :value="k" />
-            </el-select>
-          </el-form-item>
-        </el-col>
-        <el-col :span="12">
-          <el-form-item label="订单来源">
-            <el-select v-model="form.source" style="width: 100%">
-              <el-option v-for="s in RES_SOURCES" :key="s" :label="s" :value="s" />
-            </el-select>
-          </el-form-item>
-        </el-col>
-      </el-row>
-
-      <el-form-item label="来源单号">
-        <el-input v-model="form.source_order_no" placeholder="选填" />
-      </el-form-item>
-
-      <el-row :gutter="16">
-        <el-col :span="isHourly ? 12 : 8">
-          <el-form-item label="到达时间" required>
-            <el-date-picker v-model="form.check_in_date" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
-          </el-form-item>
-        </el-col>
-        <el-col v-if="!isHourly" :span="8">
-          <el-form-item label="离店时间" required>
-            <el-date-picker v-model="form.check_out_date" type="date" value-format="YYYY-MM-DD" style="width: 100%" />
-          </el-form-item>
-        </el-col>
-        <el-col v-if="!isHourly" :span="8">
-          <el-form-item label="天数">
-            <el-input-number v-model="nights" :min="1" :max="99" style="width: 100%" />
-          </el-form-item>
-        </el-col>
-        <el-col v-else :span="12">
-          <el-form-item label="时长">
-            <el-input :model-value="'3 小时'" disabled />
-          </el-form-item>
-        </el-col>
-      </el-row>
-
-      <el-form-item label="备注">
-        <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="选填" />
-      </el-form-item>
-
-      <el-divider content-position="left">房间信息</el-divider>
-      <div v-for="(line, idx) in form.lines" :key="idx" class="room-line">
+    <el-form :model="form" label-width="84px">
+      <!-- ① 宾客信息 -->
+      <div class="section">
+        <div class="section-title"><span class="dot">1</span>宾客信息</div>
         <el-row :gutter="16">
-          <el-col :span="8">
-            <el-form-item :label="idx === 0 ? '房型' : '房型'">
-              <el-select v-model="line.room_type_id" placeholder="选择房型" style="width: 100%" @change="onTypeChange(line)">
-                <el-option v-for="t in roomTypes" :key="t.id" :label="`${t.name}（¥${t.base_price}）`" :value="t.id" />
+          <el-col :span="12">
+            <el-form-item label="预定人" required>
+              <el-input v-model="form.guest_name" placeholder="请输入姓名" clearable @change="upperCard">
+                <template #prefix><el-icon><User /></el-icon></template>
+              </el-input>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="身份证号">
+              <el-input v-model="form.guest_id_card" placeholder="身份证号（选填）" clearable maxlength="18" @change="upperCard">
+                <template #prefix><el-icon><Postcard /></el-icon></template>
+              </el-input>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="手机号">
+              <el-input v-model="form.guest_phone" placeholder="手机号（选填）" clearable maxlength="20">
+                <template #prefix><el-icon><Iphone /></el-icon></template>
+              </el-input>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="订单来源">
+              <el-select v-model="form.source" style="width: 100%">
+                <el-option v-for="s in RES_SOURCES" :key="s" :label="s" :value="s" />
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="8">
-            <el-form-item :label="idx === 0 ? '间数' : '间数'">
-              <el-input-number v-model="line.rooms" :min="1" :max="99" style="width: 100%" />
+        </el-row>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="来源单号">
+              <el-input v-model="form.source_order_no" placeholder="渠道单号（选填）" clearable />
             </el-form-item>
           </el-col>
-          <el-col :span="8">
-            <el-form-item :label="idx === 0 ? '间晚房价' : '间晚房价'">
-              <div style="width: 100%; display: flex; flex-direction: column; gap: 2px;">
-                <el-input-number v-model="line.rate" :min="0" :precision="2" :controls="false" style="width: 100%" @change="onLineRateChange(line)" />
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <el-button text type="primary" size="small" @click="editLineRates(line)" :disabled="!line.rates?.length">逐晚修改</el-button>
-                  <el-button v-if="form.lines.length > 1" text type="danger" size="small" @click="removeLine(idx)">删除</el-button>
-                </div>
-              </div>
+          <el-col :span="12">
+            <el-form-item label="房间类型">
+              <el-select v-model="form.booking_type" style="width: 100%">
+                <el-option v-for="k in ROOM_KINDS" :key="k" :label="k" :value="k" />
+              </el-select>
             </el-form-item>
           </el-col>
         </el-row>
       </div>
 
-      <el-form-item v-if="isWalkin" label="指定房间" required>
-        <el-select v-model="form.room_id" placeholder="请选择房间" clearable style="width: 100%">
-          <el-option v-for="r in roomOptions" :key="r.id" :label="`${r.room_no}（${r.type_name}）`" :value="r.id" />
+      <!-- ② 入住安排 -->
+      <div class="section">
+        <div class="section-title">
+          <span class="dot">2</span>入住安排
+        </div>
+        <el-row :gutter="16">
+          <el-col :span="isHourly ? 12 : 8">
+            <el-form-item label="到达日期" required>
+              <el-date-picker v-model="form.check_in_date" type="date" value-format="YYYY-MM-DD" :clearable="false" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+          <el-col v-if="!isHourly" :span="8">
+            <el-form-item label="离店日期" required>
+              <el-date-picker v-model="form.check_out_date" type="date" value-format="YYYY-MM-DD" :clearable="false" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+          <el-col v-if="!isHourly" :span="8">
+            <el-form-item label="晚数">
+              <el-input-number v-model="nights" :min="1" :max="99" controls-position="right" style="width: 100%" />
+            </el-form-item>
+          </el-col>
+          <el-col v-else :span="12">
+            <el-form-item label="时长">
+              <el-input model-value="3 小时" disabled>
+                <template #prefix><el-icon><Timer /></el-icon></template>
+              </el-input>
+            </el-form-item>
+          </el-col>
+        </el-row>
+      </div>
+
+      <!-- ③ 房间与房价 -->
+      <div class="section">
+        <div class="section-title">
+          <span class="dot">3</span>房间与房价
+          <el-button class="sec-action" text type="primary" @click="addLine">
+            <el-icon><Plus /></el-icon>&nbsp;添加房型
+          </el-button>
+        </div>
+
+        <div v-for="(line, idx) in form.lines" :key="idx" class="room-card">
+          <div class="room-card-main">
+            <el-select v-model="line.room_type_id" placeholder="选择房型" class="rc-type" @change="onTypeChange(line)">
+              <el-option v-for="t in roomTypes" :key="t.id" :label="`${t.name}（¥${t.base_price}）· 余 ${availByType[t.id] || 0} 间`" :value="t.id" />
+            </el-select>
+            <el-input-number v-model="line.rooms" :min="1" :max="roomsMax(line)" controls-position="right" class="rc-rooms" />
+            <div class="rc-rate">
+              <span class="rc-rate-label">间晚</span>
+              <el-input-number v-model="line.rate" :min="0" :precision="2" :controls="false" class="rc-rate-input" @change="onLineRateChange(line)" />
+            </div>
+            <div class="rc-actions">
+              <el-button text type="primary" size="small" :disabled="!line.rates?.length" @click="editLineRates(line)">逐晚</el-button>
+              <el-button v-if="form.lines.length > 1" text type="danger" size="small" @click="removeLine(idx)">
+                <el-icon><Delete /></el-icon>
+              </el-button>
+            </div>
+          </div>
+          <div class="room-card-foot">
+            <span class="rc-sub-note">{{ line.rooms }} 间 × {{ nights }} 晚</span>
+            <span class="rc-sub-label">小计</span>
+            <span class="rc-subtotal">{{ fmtMoney(lineSubtotal(line)) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ④ 指定房间（散客直接入住） -->
+      <div v-if="isWalkin" class="section walkin">
+        <div class="section-title">
+          <span class="dot">4</span>指定房间
+          <span class="sec-badge warn-badge">办理入住必选</span>
+        </div>
+        <el-select v-model="form.room_id" placeholder="请选择要入住的房间" clearable filterable style="width: 100%">
+          <el-option v-for="r in roomOptions" :key="r.id" :label="`${r.room_no}（${r.type_name}）`" :value="r.id">
+            <span class="room-no">{{ r.room_no }}</span>
+            <span class="room-type">{{ r.type_name }}</span>
+          </el-option>
         </el-select>
-      </el-form-item>
+      </div>
+
+      <!-- 备注 -->
+      <div class="section">
+        <div class="section-title"><span class="dot">{{ isWalkin ? 5 : 4 }}</span>备注</div>
+        <el-input v-model="form.remark" type="textarea" :rows="2" placeholder="特殊需求、说明（选填）" maxlength="200" show-word-limit />
+      </div>
 
       <!-- 各晚房价对话框 -->
       <el-dialog :model-value="ratesVisible" title="各晚房价" width="460px" @update:model-value="ratesVisible = $event">
@@ -122,16 +163,22 @@
       </el-dialog>
     </el-form>
 
-    <!-- 左下角：新增预定房型 -->
-    <div style="margin-top: 4px; text-align: left;">
-      <el-button text type="primary" @click="addLine">＋ 新增预定房型</el-button>
-    </div>
-
     <template #footer>
-      <el-button @click="$emit('update:visible', false)">取消</el-button>
-      <el-button type="primary" :loading="saving" @click="save">
-        {{ isWalkin ? '确认入住' : mode === 'edit' ? '保存修改' : '保存预订' }}
-      </el-button>
+      <div class="res-footer">
+        <div class="total-box">
+          <span class="total-label">预估总额</span>
+          <span class="total-amount">{{ fmtMoney(totalAmount) }}</span>
+          <span class="total-detail">
+            共 {{ totalRooms }} 间 · {{ isHourly ? '3 小时' : `${nights} 晚` }}
+          </span>
+        </div>
+        <div class="res-footer-btns">
+          <el-button @click="$emit('update:visible', false)">取消</el-button>
+          <el-button type="primary" :loading="saving" @click="save">
+            {{ isWalkin ? '确认入住' : mode === 'edit' ? '保存修改' : '保存预订' }}
+          </el-button>
+        </div>
+      </div>
     </template>
   </el-dialog>
 </template>
@@ -140,7 +187,7 @@
 import { ref, reactive, computed, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import http from '../api';
-import { fmtDate, addDays, nightsBetween, RES_SOURCES, ROOM_KINDS } from '../utils/format';
+import { fmtDate, addDays, nightsBetween, fmtMoney, RES_SOURCES, ROOM_KINDS } from '../utils/format';
 
 const props = defineProps({
   visible: Boolean,
@@ -162,6 +209,7 @@ const editingLine = ref(null);
 
 const form = reactive({
   guest_name: '',
+  guest_id_card: '',
   guest_phone: '',
   booking_type: '全日房',
   room_id: null,
@@ -173,6 +221,26 @@ const form = reactive({
   lines: [], // [{ room_type_id, rooms, rate, rates:[{date,price}] }]
 });
 
+// 金额展示：单行小计 = 间数 × 各晚房价之和
+function lineSubtotal(line) {
+  const rooms = Number(line.rooms) || 0;
+  const perNightSum = (line.rates || []).reduce((s, x) => s + (Number(x.price) || 0), 0);
+  return rooms * perNightSum;
+}
+const totalAmount = computed(() => form.lines.reduce((s, ln) => s + lineSubtotal(ln), 0));
+const totalRooms = computed(() => form.lines.reduce((s, ln) => s + (Number(ln.rooms) || 0), 0));
+
+// 每个房型的可预订剩余间数（依据可用房统计）
+const availByType = computed(() => {
+  const map = {};
+  availableRooms.value.forEach((r) => { map[r.type_id] = (map[r.type_id] || 0) + 1; });
+  return map;
+});
+// 该行房型的可订上限（未选房型时放开）
+function roomsMax(line) {
+  const avail = availByType.value[line.room_type_id];
+  return avail == null ? 99 : Math.max(avail, 1);
+}
 function safeJson(v) {
   try { return JSON.parse(v || '{}'); } catch { return {}; }
 }
@@ -260,6 +328,8 @@ function onTypeChange(line) {
   const t = roomTypes.value.find((x) => x.id === line.room_type_id);
   if (t && line.rates?.length) line.rates.forEach((x) => { if (!x.price) x.price = t.base_price; });
   line.rate = line.rates[0]?.price || 0;
+  const avail = availByType.value[line.room_type_id];
+  if (avail != null) line.rooms = Math.min(line.rooms, Math.max(avail, 1));
 }
 function onLineRateChange(line) {
   if (line.rates?.length) line.rates[0].price = line.rate;
@@ -286,7 +356,7 @@ watch(
     if (!v) return;
     await Promise.all([loadRoomTypes(), loadAvailableRooms()]);
     Object.assign(form, {
-      guest_name: '', guest_phone: '', booking_type: '全日房', room_id: null,
+      guest_name: '', guest_id_card: '', guest_phone: '', booking_type: '全日房', room_id: null,
       check_in_date: fmtDate(), check_out_date: addDays(fmtDate(), 1),
       source: '散客', source_order_no: '', remark: '', lines: [],
     });
@@ -306,7 +376,7 @@ watch(
         return { room_type_id: ln.room_type_id || null, rooms: ln.rooms || 1, rate: rates[0]?.price || 0, rates };
       });
       Object.assign(form, {
-        guest_name: r.guest_name, guest_phone: r.guest_phone || '',
+        guest_name: r.guest_name, guest_id_card: r.guest_id_card || '', guest_phone: r.guest_phone || '',
         booking_type: r.booking_type || '全日房',
         room_id: r.room_id, check_in_date: r.check_in_date, check_out_date: r.check_out_date,
         source: r.source || '散客', source_order_no: r.source_order_no || '', remark: r.remark || '',
@@ -326,10 +396,14 @@ watch(
 );
 
 function reset() {
-  form.guest_name = ''; form.guest_phone = '';
+  form.guest_name = ''; form.guest_id_card = ''; form.guest_phone = '';
   form.booking_type = '全日房'; form.room_id = null;
   form.source = '散客'; form.source_order_no = '';
   form.remark = ''; form.lines = [];
+}
+
+function upperCard() {
+  form.guest_id_card = (form.guest_id_card || '').trim().toUpperCase();
 }
 
 async function save() {
@@ -365,9 +439,10 @@ async function save() {
 
   saving.value = true;
   try {
+    const guest_id_card = (form.guest_id_card || '').trim().toUpperCase();
     if (props.mode === 'edit') {
       await http.put(`/reservations/${props.reservation.id}`, {
-        guest_name: form.guest_name, guest_phone: form.guest_phone,
+        guest_name: form.guest_name, guest_phone: form.guest_phone, guest_id_card,
         booking_type: form.booking_type, room_id: form.room_id,
         ...dates, lines: linesPayload, ...legacy,
         source: form.source, source_order_no: form.source_order_no, remark: form.remark,
@@ -375,7 +450,7 @@ async function save() {
       ElMessage.success('预定已修改');
     } else {
       const payload = {
-        guest_name: form.guest_name, guest_phone: form.guest_phone,
+        guest_name: form.guest_name, guest_phone: form.guest_phone, guest_id_card,
         booking_type: form.booking_type, room_id: form.room_id,
         ...dates, lines: linesPayload, ...legacy,
         source: form.source, source_order_no: form.source_order_no, remark: form.remark,
@@ -393,3 +468,122 @@ async function save() {
   }
 }
 </script>
+
+<style scoped>
+/* 分区（蓝圈序号标题，与入住弹窗一致） */
+.section { margin-bottom: 4px; }
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  margin: 14px 0 10px;
+}
+.section-title .dot {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: #337ecc; color: #fff; font-size: 13px;
+  display: flex; align-items: center; justify-content: center;
+}
+.sec-badge {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: #1c7ed6;
+  background: #e7f5ff;
+  border-radius: 999px;
+  padding: 1px 10px;
+}
+.sec-badge.warn-badge { color: #e8590c; background: #fff4e6; }
+.sec-action { margin-left: auto; }
+
+/* 房型卡片 */
+.room-card {
+  border: 1px solid #e9ecef;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: #f8f9fa;
+  transition: border-color .15s;
+}
+.room-card:hover { border-color: #a5d8ff; }
+.room-card-main { display: flex; align-items: center; gap: 10px; }
+.rc-type { flex: 1; min-width: 0; }
+.rc-rooms { width: 100px; flex-shrink: 0; }
+.rc-rate { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.rc-rate-label { font-size: 12px; color: #868e96; }
+.rc-rate-input { width: 104px; }
+.rc-actions { display: flex; align-items: center; flex-shrink: 0; }
+.room-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #dee2e6;
+}
+.rc-sub-note { font-size: 12px; color: #868e96; margin-right: auto; }
+.rc-sub-label { font-size: 12px; color: #868e96; }
+.rc-subtotal { font-size: 15px; font-weight: 700; color: #e03131; }
+
+/* 散客直接入住 */
+.walkin {
+  background: #fff4e6;
+  border: 1px solid #ffd8a8;
+  border-radius: 10px;
+  padding: 4px 12px 14px;
+  margin-top: 12px;
+}
+.walkin .el-select { margin-top: 4px; }
+.room-no { font-weight: 600; color: #343a40; }
+.room-type { float: right; font-size: 12px; color: #868e96; padding-left: 12px; }
+
+/* 底部合计 */
+.res-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.total-box { display: flex; align-items: baseline; gap: 8px; }
+.total-label { font-size: 13px; color: #868e96; }
+.total-amount { font-size: 24px; font-weight: 700; color: #e03131; }
+.total-detail { font-size: 12px; color: #868e96; }
+.res-footer-btns { display: flex; gap: 10px; }
+
+/* 表单项间距微调 */
+.section :deep(.el-form-item) { margin-bottom: 14px; }
+.section :deep(.el-input__prefix-inner) { color: #adb5bd; }
+</style>
+
+<style>
+/* 弹窗整体（class 挂在 el-dialog 根元素上，需非 scoped） */
+.res-form.el-dialog {
+  border-radius: 14px;
+  overflow: hidden;
+  height: 80%;
+  display: flex;
+  flex-direction: column;
+}
+.res-form .el-dialog__header {
+  margin-right: 0;
+  padding: 18px 24px 14px;
+  border-bottom: 1px solid #f1f3f5;
+}
+.res-form .el-dialog__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #212529;
+}
+.res-form .el-dialog__body {
+  padding: 14px 24px 18px;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+.res-form .el-dialog__footer {
+  padding: 14px 24px 18px;
+  border-top: 1px solid #f1f3f5;
+  background: #fcfcfd;
+}
+</style>

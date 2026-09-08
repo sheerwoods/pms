@@ -40,13 +40,16 @@ router.get('/rooms', wrap((req, res) => {
               ORDER BY r.floor, r.room_no`));
 }));
 
-// 可用房（未维修、无未结束订单）
+// 可用房（未维修、无未结束订单）——兼容旧的 reservation.room_id 与新 reservation_rooms
 router.get('/rooms/available', wrap((req, res) => {
   const rooms = q(`SELECT r.*, t.name AS type_name FROM rooms r
                    LEFT JOIN room_types t ON t.id=r.type_id
                    WHERE r.status != 'ooo' ORDER BY r.floor, r.room_no`);
   const taken = q(`SELECT DISTINCT room_id FROM reservations WHERE status IN ('reserved','checked_in') AND room_id IS NOT NULL`);
-  const takenSet = new Set(taken.map((x) => x.room_id));
+  const taken2 = q(`SELECT DISTINCT rr.room_id FROM reservation_rooms rr
+                    JOIN reservations r ON r.id=rr.reservation_id
+                    WHERE r.status IN ('reserved','checked_in') AND rr.room_id IS NOT NULL`);
+  const takenSet = new Set([...taken, ...taken2].map((x) => x.room_id));
   res.json(rooms.filter((x) => !takenSet.has(x.id)));
 }));
 
@@ -67,7 +70,8 @@ router.put('/rooms/:id', wrap((req, res) => {
 
 router.delete('/rooms/:id', wrap((req, res) => {
   const active = get("SELECT COUNT(*) AS c FROM reservations WHERE room_id=? AND status IN ('reserved','checked_in')", req.params.id);
-  if (active.c > 0) throw new AppError('该房间存在未结束的订单，无法删除');
+  const active2 = get("SELECT COUNT(*) AS c FROM reservation_rooms rr JOIN reservations r ON r.id=rr.reservation_id WHERE rr.room_id=? AND r.status IN ('reserved','checked_in')", req.params.id);
+  if (active.c > 0 || active2.c > 0) throw new AppError('该房间存在未结束的订单，无法删除');
   run('DELETE FROM rooms WHERE id=?', req.params.id);
   res.json({ ok: true });
 }));
@@ -86,13 +90,33 @@ router.get('/room-status', wrap((req, res) => {
   const rooms = q(`SELECT r.*, t.name AS type_name, t.base_price AS type_price
                    FROM rooms r LEFT JOIN room_types t ON t.id=r.type_id
                    ORDER BY r.floor, r.room_no`);
-  const inHouse = q(`SELECT * FROM reservations WHERE status='checked_in' AND room_id IS NOT NULL`);
-  const expected = q(`SELECT * FROM reservations WHERE status='reserved' AND room_id IS NOT NULL AND check_in_date <= ? AND check_out_date > ?`, date, date);
+  // 按每间状态驱动（分批入住）：rr.status=checked_in → 占；pending 且已分配房 → 预抵
+  const inHouse = q(
+    `SELECT r.*, rr.room_id AS assigned_room_id FROM reservations r
+     JOIN reservation_rooms rr ON rr.reservation_id=r.id
+     WHERE rr.status='checked_in' AND rr.room_id IS NOT NULL`
+  );
+  const expected = q(
+    `SELECT r.*, rr.room_id AS assigned_room_id FROM reservations r
+     JOIN reservation_rooms rr ON rr.reservation_id=r.id
+     WHERE rr.status='pending' AND rr.room_id IS NOT NULL AND r.check_in_date <= ? AND r.check_out_date > ?`,
+    date, date
+  );
+  // 兼容旧的、无子行的预订（按 reservations.status + room_id 回退）
+  const legacyIn = q(
+    `SELECT r.*, r.room_id AS assigned_room_id FROM reservations r
+     WHERE r.status='checked_in' AND r.room_id IS NOT NULL AND r.id NOT IN (SELECT DISTINCT reservation_id FROM reservation_rooms)`
+  );
+  const legacyExp = q(
+    `SELECT r.*, r.room_id AS assigned_room_id FROM reservations r
+     WHERE r.status='reserved' AND r.room_id IS NOT NULL AND r.check_in_date <= ? AND r.check_out_date > ? AND r.id NOT IN (SELECT DISTINCT reservation_id FROM reservation_rooms)`,
+    date, date
+  );
 
   const byRoomIn = {};
   const byRoomExp = {};
-  inHouse.forEach((x) => (byRoomIn[x.room_id] = x));
-  expected.forEach((x) => (byRoomExp[x.room_id] = x));
+  [...inHouse, ...legacyIn].forEach((x) => { const room = x.assigned_room_id || x.room_id; if (room) byRoomIn[room] = x; });
+  [...expected, ...legacyExp].forEach((x) => { const room = x.assigned_room_id || x.room_id; if (room) byRoomExp[room] = x; });
 
   const result = rooms.map((room) => {
     const item = { room, eff_status: '', reservation: null, balance: null };

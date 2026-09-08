@@ -9,7 +9,9 @@
   >
     <el-descriptions :column="2" border size="small" class="mb">
       <el-descriptions-item label="客人">{{ reservation?.guest_name }}</el-descriptions-item>
-      <el-descriptions-item label="房间">{{ reservation?.room_no }}</el-descriptions-item>
+      <el-descriptions-item label="房间">
+        {{ reservation?.room_list?.length > 1 ? `${reservation.room_list.length} 间` : (reservation?.room_no || '-') }}
+      </el-descriptions-item>
       <el-descriptions-item label="入住">{{ info?.check_in }}</el-descriptions-item>
       <el-descriptions-item label="房价/晚">{{ fmtMoney(reservation?.rate) }}</el-descriptions-item>
     </el-descriptions>

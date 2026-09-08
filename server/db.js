@@ -47,6 +47,7 @@ function initSchema() {
       guest_id INTEGER REFERENCES guests(id),
       guest_name TEXT NOT NULL,
       guest_phone TEXT DEFAULT '',
+      guest_id_card TEXT DEFAULT '',
       room_type_id INTEGER REFERENCES room_types(id),
       room_id INTEGER REFERENCES rooms(id),
       check_in_date TEXT NOT NULL,
@@ -78,9 +79,24 @@ function initSchema() {
       method TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now','localtime'))
     );
+    CREATE TABLE IF NOT EXISTS reservation_rooms (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reservation_id INTEGER NOT NULL REFERENCES reservations(id),
+      room_id INTEGER REFERENCES rooms(id),
+      room_type_id INTEGER REFERENCES room_types(id),
+      line_index INTEGER DEFAULT 0,
+      guest_name TEXT DEFAULT '',
+      guest_id_card TEXT DEFAULT '',
+      guest_phone TEXT DEFAULT '',
+      cohabitors TEXT DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'pending',  -- pending / checked_in / checked_out
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
     CREATE INDEX IF NOT EXISTS idx_res_status ON reservations(status);
     CREATE INDEX IF NOT EXISTS idx_res_room ON reservations(room_id, status);
     CREATE INDEX IF NOT EXISTS idx_folio_res ON folio_items(reservation_id);
+    CREATE INDEX IF NOT EXISTS idx_res_room_res ON reservation_rooms(reservation_id);
+    CREATE INDEX IF NOT EXISTS idx_res_room_room ON reservation_rooms(room_id);
   `);
 
   // 旧库升级：为已存在的 reservations 表补充新字段
@@ -90,6 +106,52 @@ function initSchema() {
   if (!resCols.includes('booking_type')) run("ALTER TABLE reservations ADD COLUMN booking_type TEXT DEFAULT '全日房'");
   if (!resCols.includes('rates')) run("ALTER TABLE reservations ADD COLUMN rates TEXT DEFAULT '{}'");
   if (!resCols.includes('lines')) run("ALTER TABLE reservations ADD COLUMN lines TEXT DEFAULT '[]'");
+  if (!resCols.includes('guest_id_card')) run("ALTER TABLE reservations ADD COLUMN guest_id_card TEXT DEFAULT ''");
+
+  // residence_rooms 状态列（分批入住）
+  const rrCols = q('PRAGMA table_info(reservation_rooms)').map((c) => c.name);
+  if (!rrCols.includes('status')) run("ALTER TABLE reservation_rooms ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'");
+}
+
+// 展开为逐间单元：每个 房型行 × 每间 一条，携带行下标与房型
+function unitInfos(r) {
+  let lines = [];
+  try { const arr = r.lines ? JSON.parse(r.lines) : []; lines = (Array.isArray(arr) && arr.length) ? arr : []; } catch { /* */ }
+  if (!lines.length) lines = [{ room_type_id: r.room_type_id || null, rooms: r.rooms || 1 }];
+  const out = [];
+  lines.forEach((ln, li) => {
+    const rooms = Math.max(1, Number(ln.rooms) || 1);
+    for (let m = 0; m < rooms; m++) out.push({ line_index: li, room_type_id: ln.room_type_id || null });
+  });
+  return out;
+}
+
+// 下载/迁移回填：设置已入住行状态，并按单元补齐每间待入住行（幂等）
+function backfillReservationRooms() {
+  // 1) 已入住订单的既有行置为 checked_in
+  run("UPDATE reservation_rooms SET status='checked_in' WHERE status='pending' AND reservation_id IN (SELECT id FROM reservations WHERE status='checked_in')");
+
+  // 2) 确保每个 active 预订有 totalRoomCount 行
+  const res = q("SELECT * FROM reservations WHERE status IN ('reserved','checked_in')");
+  for (const r of res) {
+    const existing = q('SELECT * FROM reservation_rooms WHERE reservation_id=? ORDER BY id', r.id);
+    const units = unitInfos(r);
+    // 已有行数超过单元数（异常）时截断多余，避免错位
+    let rows = existing.slice(0, units.length);
+    for (let i = rows.length; i < units.length; i++) {
+      const u = units[i];
+      const isFirst = rows.length === 0;
+      run(
+        'INSERT INTO reservation_rooms (reservation_id, room_id, room_type_id, line_index, guest_name, guest_id_card, guest_phone, status) VALUES (?,?,?,?,?,?,?,?)',
+        r.id,
+        (isFirst ? r.room_id : null),
+        u.room_type_id, u.line_index,
+        (isFirst ? r.guest_name : ''), (isFirst ? r.guest_id_card || '' : ''), (isFirst ? r.guest_phone || '' : ''),
+        r.status === 'checked_in' ? 'checked_in' : 'pending'
+      );
+      rows.push({});
+    }
+  }
 }
 
 function seed() {
@@ -218,5 +280,6 @@ function seed() {
 
 initSchema();
 seed();
+backfillReservationRooms();
 
 module.exports = { db, q, get, run };

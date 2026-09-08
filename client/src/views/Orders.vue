@@ -48,9 +48,13 @@
         <el-table-column label="房间类型" width="80">
           <template #default="{ row }">{{ row.booking_type || '全日房' }}</template>
         </el-table-column>
-        <el-table-column label="房号" width="70">
+        <el-table-column label="房号" width="110">
           <template #default="{ row }">
-            <el-tag v-if="row.room_no" size="small">{{ row.room_no }}</el-tag>
+            <el-tag v-if="row.checked_in_rooms > 0 && row.pending_rooms > 0" size="small" type="success">
+              已入住 {{ row.checked_in_rooms }}/{{ row.room_list?.length || row.rooms || 1 }}
+            </el-tag>
+            <el-tag v-else-if="row.room_list?.length > 1" size="small" type="success">{{ row.room_list[0].room_no }} 等{{ row.room_list.length }}间</el-tag>
+            <el-tag v-else-if="row.room_no" size="small">{{ row.room_no }}</el-tag>
             <span v-else class="sub">未分房</span>
           </template>
         </el-table-column>
@@ -81,10 +85,12 @@
         </el-table-column>
         <el-table-column label="操作" width="235">
           <template #default="{ row }">
-            <el-button v-if="row.status === 'reserved'" link type="primary" size="small" @click="openCheckin(row)">入住</el-button>
+            <el-button v-if="row.status === 'reserved' && (row.pending_rooms ?? row.rooms ?? 1) > 0" link type="primary" size="small" @click="openCheckin(row)">
+              {{ row.checked_in_rooms > 0 ? '继续入住' : '入住' }}
+            </el-button>
             <el-button v-if="row.status === 'reserved'" link type="warning" size="small" @click="openEdit(row)">改单</el-button>
-            <el-button v-if="row.status === 'reserved'" link type="danger" size="small" @click="doCancel(row)">取消</el-button>
-            <el-button v-if="row.status === 'reserved'" link size="small" @click="doNoShow(row)">未到</el-button>
+            <el-button v-if="row.status === 'reserved' && !(row.checked_in_rooms > 0)" link type="danger" size="small" @click="doCancel(row)">取消</el-button>
+            <el-button v-if="row.status === 'reserved' && !(row.checked_in_rooms > 0)" link size="small" @click="doNoShow(row)">未到</el-button>
 
             <el-button v-if="row.status === 'checked_in'" link type="danger" size="small" @click="openCheckout(row)">退房</el-button>
             <el-button v-if="row.status === 'checked_in'" link type="primary" size="small" @click="openEdit(row)">续住</el-button>

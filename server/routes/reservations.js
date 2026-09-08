@@ -13,16 +13,43 @@ function getRoomNo(id) {
   return r ? r.room_no : '-';
 }
 
-// 房间是否可用（未被占用/维修）
+// 为一批预订挂载其已分配的房间列表（room_list）
+function attachRoomList(list) {
+  if (!list.length) return list;
+  const ids = list.map((x) => x.id);
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = q(
+    `SELECT rr.*, rm.room_no FROM reservation_rooms rr
+     LEFT JOIN rooms rm ON rm.id=rr.room_id
+     WHERE rr.reservation_id IN (${placeholders}) ORDER BY rr.id`,
+    ...ids
+  );
+  const byRes = {};
+  rows.forEach((r) => { (byRes[r.reservation_id] = byRes[r.reservation_id] || []).push(r); });
+  list.forEach((x) => {
+    x.room_list = byRes[x.id] || [];
+    x.checked_in_rooms = x.room_list.filter((r) => r.status === 'checked_in').length;
+    x.pending_rooms = x.room_list.filter((r) => r.status === 'pending').length;
+  });
+  return list;
+}
+
+// 房间是否可用（未被占用/维修）——兼容旧的 reservations.room_id 与新 reservation_rooms
 function isRoomAvailable(roomId, excludeResId = null) {
   if (!roomId) return false;
   const room = get('SELECT * FROM rooms WHERE id=?', roomId);
   if (!room || room.status === 'ooo') return false;
+  const ex = excludeResId || 0;
   const active = get(
     "SELECT id FROM reservations WHERE room_id=? AND status IN ('reserved','checked_in') AND id != ? LIMIT 1",
-    roomId, excludeResId || 0
+    roomId, ex
   );
-  return !active;
+  if (active) return false;
+  const rr = get(
+    "SELECT r.id FROM reservation_rooms rr JOIN reservations r ON r.id=rr.reservation_id WHERE rr.room_id=? AND r.status IN ('reserved','checked_in') AND r.id != ? LIMIT 1",
+    roomId, ex
+  );
+  return !rr;
 }
 
 function validateReservation(body, { isHourly = false } = {}) {
@@ -48,6 +75,56 @@ function safeParseLines(r) {
     if (Array.isArray(arr) && arr.length) return arr;
   } catch { /* fall through */ }
   return [{ room_type_id: r.room_type_id || null, rooms: r.rooms || 1, rate: r.rate || 0, rates: r.rates || '{}' }];
+}
+
+// 展开为逐间单元：每个 房型行 × 每间 一条，携带行下标与房型
+function unitsFromLines(lines) {
+  const arr = (Array.isArray(lines) && lines.length) ? lines : [];
+  const out = [];
+  arr.forEach((ln, li) => {
+    const rooms = Math.max(1, Number(ln.rooms) || 1);
+    for (let m = 0; m < rooms; m++) out.push({ line_index: li, room_type_id: ln.room_type_id || null });
+  });
+  return out;
+}
+
+function unitInfos(r) {
+  return unitsFromLines(safeParseLines(r));
+}
+
+// 该订单应入住的房间总数
+function totalRoomCount(r) {
+  return unitInfos(r).length;
+}
+
+// 为一批已选房间行生成房费明细（每间 nights 晚 × 对应房型晚价）
+function chargeUnitsForRows(r, rows) {
+  const lines = safeParseLines(r);
+  const isHourly = r.booking_type === '钟点房';
+  const nights = isHourly ? 1 : Math.max(0, nightsBetween(r.check_in_date, r.check_out_date));
+  const units = [];
+  for (const row of rows) {
+    const ln = lines[row.line_index] || lines[0] || {};
+    const map = parseRates(ln);
+    const fb = Number(ln.rate) || 0;
+    for (let i = 0; i < nights; i++) {
+      const d = addDays(r.check_in_date, i);
+      const price = map[d] != null ? map[d] : fb;
+      units.push({ date: d, amount: price });
+    }
+  }
+  return units;
+}
+
+// 入住人/同住人校验：姓名必填；身份证号/手机号选填（填了则校验格式）。兼容 guest_* 与 name/id_card/phone 两种字段
+function validateOccupantImpl(o, label) {
+  const name = String((o && (o.guest_name ?? o.name)) || '').trim();
+  const idCard = String((o && (o.guest_id_card ?? o.id_card)) || '').trim().toUpperCase();
+  const phone = String((o && (o.guest_phone ?? o.phone)) || '').trim();
+  if (!name) throw new AppError(`${label}姓名必填`);
+  if (idCard && !/^\d{17}[\dX]$/.test(idCard)) throw new AppError(`${label}身份证号格式不正确（18位，末位可为X）`);
+  if (phone && !/^1[3-9]\d{9}$/.test(phone)) throw new AppError(`${label}手机号格式不正确（1开头的11位数字）`);
+  return { name, idCard, phone };
 }
 
 // 归一化预定房型：优先 body.lines；兼容旧负载（顶层 rate/rates/room_type_id/rooms）；否则回退存量订单
@@ -152,6 +229,7 @@ router.get('/reservations', wrap((req, res) => {
                   LEFT JOIN room_types t ON t.id=r.room_type_id
                   ${where}
                   ORDER BY r.id DESC LIMIT ? OFFSET ?`, ...params, Number(pageSize), offset);
+  attachRoomList(list);
   res.json({ total, list, page: Number(page), pageSize: Number(pageSize) });
 }));
 
@@ -165,6 +243,7 @@ router.get('/reservations/:id', wrap((req, res) => {
   if (!r) throw new AppError('订单不存在', 404);
   r.balance = getBalance(r.id);
   r.folio = getFolio(r.id);
+  attachRoomList([r]);
   res.json(r);
 }));
 
@@ -177,7 +256,7 @@ router.post('/reservations', wrap((req, res) => {
   } = b;
   const isHourly = booking_type === '钟点房';
   const {
-    guest_id, guest_name, guest_phone,
+    guest_id, guest_name, guest_phone, guest_id_card = '',
     adults = 1,
     source = '散客', source_order_no = '', remark = '', auto_checkin = false,
   } = b;
@@ -205,23 +284,38 @@ router.post('/reservations', wrap((req, res) => {
   if (!gid) {
     const existing = get('SELECT id FROM guests WHERE name=? AND phone=?', guest_name, guest_phone || '');
     if (existing) gid = existing.id;
-    else gid = Number(run('INSERT INTO guests (name, phone) VALUES (?,?)', guest_name, guest_phone || '').lastInsertRowid);
-  } else if (guest_phone) {
-    run('UPDATE guests SET phone=? WHERE id=?', guest_phone, gid);
+    else gid = Number(run('INSERT INTO guests (name, phone, id_card) VALUES (?,?,?)', guest_name, guest_phone || '', guest_id_card).lastInsertRowid);
+  } else if (guest_phone || guest_id_card) {
+    run('UPDATE guests SET phone=?, id_card=? WHERE id=?', guest_phone || '', guest_id_card, gid);
   }
 
   const status = auto_checkin ? 'checked_in' : 'reserved';
   const order_no = genOrderNo();
   const rid = Number(run(
     `INSERT INTO reservations
-      (order_no, guest_id, guest_name, guest_phone, room_type_id, room_id,
+      (order_no, guest_id, guest_name, guest_phone, guest_id_card, room_type_id, room_id,
        check_in_date, check_out_date, nights, adults, rate, rooms, total_amount,
        status, booking_type, source, source_order_no, remark, rates, lines, actual_check_in)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    order_no, gid, guest_name, guest_phone || '', first.room_type_id, b.room_id || null,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    order_no, gid, guest_name, guest_phone || '', guest_id_card, first.room_type_id, b.room_id || null,
     ci, co, nights, adults, first.rate, first.rooms, total,
     status, booking_type, source, source_order_no, remark, first.rates, linesJson, auto_checkin ? now() : null
   ).lastInsertRowid);
+
+  // 按单元逐间写 pending 分配行；直接入住时首间置为已入住
+  const units = unitsFromLines(lines);
+  for (let i = 0; i < units.length; i++) {
+    const u = units[i];
+    const isFirst = i === 0;
+    run(
+      'INSERT INTO reservation_rooms (reservation_id, room_id, room_type_id, line_index, guest_name, guest_id_card, guest_phone, status) VALUES (?,?,?,?,?,?,?,?)',
+      rid, (isFirst ? (b.room_id || null) : null), u.room_type_id, u.line_index,
+      (isFirst ? guest_name : ''), (isFirst ? guest_id_card : ''), (isFirst ? guest_phone || '' : ''), 'pending'
+    );
+  }
+  if (auto_checkin && b.room_id) {
+    run("UPDATE reservation_rooms SET status='checked_in' WHERE reservation_id=? AND id=(SELECT MIN(id) FROM reservation_rooms WHERE reservation_id=?)", rid, rid);
+  }
 
   if (auto_checkin) {
     postCheckIn(rid, gid, lineUnits(lines, p.dates));
@@ -276,18 +370,66 @@ router.put('/reservations/:id', wrap((req, res) => {
   res.json({ ok: true });
 }));
 
-// ============ 入住 ============
+// ============ 入住（支持分批，按 reservation_rooms.id 引用） ============
 router.post('/reservations/:id/check-in', wrap((req, res) => {
   const r = get('SELECT * FROM reservations WHERE id=?', req.params.id);
   if (!r) throw new AppError('订单不存在', 404);
-  if (r.status !== 'reserved') throw new AppError('仅预订状态可办理入住');
-  const { room_id } = req.body;
-  if (!room_id) throw new AppError('请选择房间');
-  if (!isRoomAvailable(room_id, r.id)) throw new AppError('该房间不可用或已被占用');
+  if (r.status !== 'reserved') throw new AppError('订单当前状态不可办理入住');
 
-  run("UPDATE reservations SET room_id=?, status='checked_in', actual_check_in=? WHERE id=?", room_id, now(), r.id);
-  postCheckIn(r.id, r.guest_id, reservationUnits(r, r.check_in_date, r.nights));
-  res.json({ ok: true });
+  const rooms = Array.isArray(req.body.rooms) ? req.body.rooms : null;
+  if (!rooms || !rooms.length) throw new AppError('请选择要入住的房间');
+  if (rooms.some((u) => !u || !u.id)) throw new AppError('入住房间标识缺失');
+
+  const lines = safeParseLines(r);
+  const ns = [];
+  for (const u of rooms) {
+    const rowId = Number(u.id);
+    const row = get('SELECT * FROM reservation_rooms WHERE id=? AND reservation_id=?', rowId, r.id);
+    if (!row) throw new AppError('入住房间不存在');
+    if (row.status !== 'pending') throw new AppError(`房间${row.room_no ? `（${row.room_no}）` : ''}已入住`);
+    const roomId = Number(u.room_id);
+    if (!roomId) throw new AppError('请选择要入住的房间');
+    if (!isRoomAvailable(roomId, r.id)) throw new AppError('该房间不可用或已被占用');
+    const line = lines[row.line_index] || lines[0] || {};
+    const lineTypeId = line.room_type_id || null;
+    if (lineTypeId) {
+      const room = get('SELECT type_id FROM rooms WHERE id=?', roomId);
+      if (room && Number(room.type_id) !== Number(lineTypeId)) throw new AppError('所选房间与预订房型不符');
+    }
+    const occ = validateOccupantImpl(u, '入住人');
+    const cohabitors = Array.isArray(u.cohabitors)
+      ? u.cohabitors.map((c, j) => validateOccupantImpl(c, `同住人${j + 1}`))
+      : [];
+    ns.push({ row, roomId, ...occ, cohabitors: JSON.stringify(cohabitors) });
+  }
+
+  // 逐间写入：置为已入住
+  for (const n of ns) {
+    run(
+      "UPDATE reservation_rooms SET status='checked_in', room_id=?, guest_name=?, guest_id_card=?, guest_phone=?, cohabitors=? WHERE id=?",
+      n.roomId, n.name, n.idCard, n.phone, n.cohabitors, n.row.id
+    );
+  }
+
+  // 回写 reservations：首间作为展示首间，actual_check_in 首次设置
+  if (!r.actual_check_in) run('UPDATE reservations SET actual_check_in=? WHERE id=?', now(), r.id);
+  const firstChecked = get('SELECT * FROM reservation_rooms WHERE reservation_id=? ORDER BY id LIMIT 1', r.id);
+  if (firstChecked) {
+    run(
+      'UPDATE reservations SET room_id=?, guest_name=?, guest_phone=?, guest_id_card=? WHERE id=?',
+      firstChecked.room_id, firstChecked.guest_name, firstChecked.guest_phone, firstChecked.guest_id_card, r.id
+    );
+    if (r.guest_id) run('UPDATE guests SET name=?, phone=?, id_card=? WHERE id=?', firstChecked.guest_name, firstChecked.guest_phone, firstChecked.guest_id_card, r.guest_id);
+  }
+
+  // 房费：仅本次新入住行
+  postCheckIn(r.id, r.guest_id, chargeUnitsForRows(r, ns.map((x) => x.row)));
+
+  // 全部入住则订单状态切为 checked_in
+  const pending = get("SELECT COUNT(*) AS c FROM reservation_rooms WHERE reservation_id=? AND status='pending'", r.id).c;
+  if (pending === 0) run("UPDATE reservations SET status='checked_in' WHERE id=?", r.id);
+
+  res.json({ ok: true, checked_in_rooms: ns.length, pending_rooms: pending });
 }));
 
 // ============ 退房结算信息（预览实际夜数与预计余额） ============
@@ -339,7 +481,10 @@ router.post('/reservations/:id/check-out', wrap((req, res) => {
   }
 
   run("UPDATE reservations SET status='checked_out', actual_check_out=? WHERE id=?", checkoutDate, r.id);
-  if (r.room_id) run("UPDATE rooms SET status='dirty' WHERE id=?", r.room_id);
+  // 置脏所有分配的房间
+  const rr = q('SELECT room_id FROM reservation_rooms WHERE reservation_id=?', r.id);
+  for (const x of rr) if (x.room_id) run("UPDATE rooms SET status='dirty' WHERE id=?", x.room_id);
+  if (!rr.length && r.room_id) run("UPDATE rooms SET status='dirty' WHERE id=?", r.room_id);
 
   res.json({ ok: true, final_balance: getBalance(r.id) });
 }));
@@ -348,7 +493,9 @@ router.post('/reservations/:id/check-out', wrap((req, res) => {
 router.post('/reservations/:id/cancel', wrap((req, res) => {
   const r = get('SELECT * FROM reservations WHERE id=?', req.params.id);
   if (!r) throw new AppError('订单不存在', 404);
-  if (!['reserved', 'checked_in'].includes(r.status)) throw new AppError('当前状态不可取消');
+  if (r.status !== 'reserved') throw new AppError('仅预订状态可取消');
+  const inHouse = get("SELECT COUNT(*) AS c FROM reservation_rooms WHERE reservation_id=? AND status='checked_in'", r.id).c;
+  if (inHouse > 0) throw new AppError('已有房间入住，无法取消');
   run("UPDATE reservations SET status='cancelled' WHERE id=?", r.id);
   res.json({ ok: true });
 }));
@@ -358,6 +505,8 @@ router.post('/reservations/:id/no-show', wrap((req, res) => {
   const r = get('SELECT * FROM reservations WHERE id=?', req.params.id);
   if (!r) throw new AppError('订单不存在', 404);
   if (r.status !== 'reserved') throw new AppError('仅预订状态可标记未到');
+  const inHouse = get("SELECT COUNT(*) AS c FROM reservation_rooms WHERE reservation_id=? AND status='checked_in'", r.id).c;
+  if (inHouse > 0) throw new AppError('已有房间入住，无法标记未到');
   run("UPDATE reservations SET status='no_show' WHERE id=?", r.id);
   res.json({ ok: true });
 }));
@@ -375,6 +524,8 @@ router.post('/reservations/:id/change-room', wrap((req, res) => {
   const oldRoomNo = getRoomNo(r.room_id);
   const newRoomNo = getRoomNo(new_room_id);
   run('UPDATE reservations SET room_id=? WHERE id=?', new_room_id, r.id);
+  // 将该预订原房间对应的分配行一并迁移
+  run('UPDATE reservation_rooms SET room_id=? WHERE reservation_id=? AND room_id=?', new_room_id, r.id, r.room_id);
   if (r.room_id) run("UPDATE rooms SET status='dirty' WHERE id=?", r.room_id);
   addFolioItem({
     reservationId: r.id, guestId: r.guest_id, itemType: 'info', category: '换房',
