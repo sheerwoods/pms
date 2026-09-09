@@ -16,7 +16,9 @@
         <div class="info-item"><span class="k">预订人</span><span class="v">{{ detail?.guest_name || reservation?.guest_name || '-' }}</span></div>
         <div class="info-item"><span class="k">手机号</span><span class="v">{{ detail?.guest_phone || reservation?.guest_phone || '-' }}</span></div>
         <div class="info-item"><span class="k">备注</span><span class="v">{{ detail?.remark || reservation?.remark || '-' }}</span></div>
-        <div class="info-item"><span class="k">订单号</span><span class="v">{{ detail?.order_no || reservation?.order_no || '-' }}</span></div>
+        <div class="info-item"><span class="k">外部订单号</span><span class="v">{{ detail?.source_order_no || reservation?.source_order_no || '-' }}</span></div>
+        <div class="info-item"><span class="k">订单来源</span><span class="v">{{ detail?.source || reservation?.source || '-' }}</span></div>
+        <div class="info-item"><span class="k">房间类型</span><span class="v">{{ detail?.booking_type || reservation?.booking_type || '-' }}</span></div>
       </div>
     </div>
 
@@ -87,10 +89,15 @@
         </el-table-column>
 
         <el-table-column label="#" type="index" width="42" align="center" />
-        <el-table-column label="房型" width="130">
+        <el-table-column label="房型" width="220">
           <template #default="{ row }">
-            <span>{{ row.room_type_name || '未选房型' }}</span>
-            <span class="rate"> ¥{{ fmtMoney(row.rate) }}/晚</span>
+            <div class="type-cell">
+              <div class="type-name">{{ row.room_type_name || '未选房型' }}</div>
+              <div class="type-rate">
+                <el-input-number v-model="row.rate" :min="0" :precision="2" :controls="false" size="small" :disabled="row.status !== 'pending'" />
+                <span class="rate-unit">/晚</span>
+              </div>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="90" align="center">
@@ -200,14 +207,21 @@ function unitOptions(row) {
 function parseCohabitors(json) {
   try { const a = JSON.parse(json || '[]'); return Array.isArray(a) ? a : []; } catch { return []; }
 }
+function parseLines(json) {
+  try { const a = JSON.parse(json || '[]'); return Array.isArray(a) ? a : []; } catch { return []; }
+}
 
 function buildRows(roomList) {
-  return (roomList || []).map((r) => ({
-    ...r,
-    room_type_name: roomTypeMap.value[r.room_type_id] || '未选房型',
-    rate: r.rate || 0,
-    cohabitors: parseCohabitors(r.cohabitors),
-  }));
+  const lines = parseLines(detail.value?.lines);
+  return (roomList || []).map((r) => {
+    const ln = lines[r.line_index] || lines[0] || {};
+    return {
+      ...r,
+      room_type_name: roomTypeMap.value[r.room_type_id] || '未选房型',
+      rate: Number(ln.rate) || 0,
+      cohabitors: parseCohabitors(r.cohabitors),
+    };
+  });
 }
 
 async function load() {
@@ -282,6 +296,7 @@ async function confirm() {
     guest_name: (r.guest_name || '').trim(),
     guest_id_card: (r.guest_id_card || '').trim().toUpperCase(),
     guest_phone: (r.guest_phone || '').trim(),
+    rate: Number(r.rate) || 0,
     cohabitors: (r.cohabitors || []).filter((c) => (c.name || '').trim())
       .map((c) => ({ name: c.name.trim(), id_card: c.id_card.trim().toUpperCase(), phone: c.phone.trim() })),
   }));
@@ -311,7 +326,11 @@ function reset() {
 .info-item .k { color: #909399; width: 72px; flex: none; text-align: right; margin-right: 8px; }
 .info-item .v { color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .info-item .v.total { color: #e03131; font-weight: 700; }
-.rate { font-size: 12px; color: #e03131; margin-left: 4px; }
+.type-cell { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.type-name { font-size: 13px; color: #303133; white-space: nowrap; }
+.type-rate { display: flex; align-items: center; gap: 4px; }
+.type-rate .el-input-number { width: 104px; }
+.rate-unit { font-size: 12px; color: #e03131; }
 .room-no { font-weight: 600; color: #343a40; padding-left: 4px; }
 
 .cohab { padding: 4px 16px; }

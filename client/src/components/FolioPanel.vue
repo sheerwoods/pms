@@ -1,6 +1,6 @@
 <template>
   <div v-if="folio">
-    <div class="folio-head">
+    <div v-if="!plain" class="folio-head">
       <div>
         <div class="fg-name">{{ folio.reservation.guest_name }}
           <el-tag size="small" :type="statusMeta?.type" style="margin-left: 8px">{{ statusMeta?.text }}</el-tag>
@@ -9,7 +9,7 @@
       </div>
       <div class="folio-balance">
         <span>账单余额：</span>
-        <b :class="folio.balance > 0 ? 'money-pos' : folio.balance < 0 ? 'money-neg' : ''">{{ fmtMoney(folio.balance) }}</b>
+        <b :class="balance > 0 ? 'money-pos' : balance < 0 ? 'money-neg' : ''">{{ balance > 0 ? '+' : balance < 0 ? '-' : '' }}{{ fmtMoney(Math.abs(balance)) }}</b>
       </div>
     </div>
 
@@ -27,8 +27,8 @@
       <el-table-column prop="method" label="方式" width="90" />
       <el-table-column label="金额" width="110" align="right">
         <template #default="{ row }">
-          <span :class="row.amount >= 0 ? 'money-pos' : 'money-neg'">
-            {{ row.amount >= 0 ? '+' : '' }}{{ row.amount.toFixed(2) }}
+          <span :class="row.amount >= 0 ? 'money-neg' : 'money-pos'">
+            {{ row.amount >= 0 ? '-' : '+' }}{{ Math.abs(row.amount).toFixed(2) }}
           </span>
         </template>
       </el-table-column>
@@ -42,14 +42,14 @@
 
     <div class="folio-foot">
       <div>
-        <el-button type="primary" size="small" @click="openAdd('extra_charge')">加账</el-button>
-        <el-button type="success" size="small" @click="openAdd('payment')">收款</el-button>
+        <el-button type="success" size="small" @click="openAdd('extra_charge')">消费</el-button>
+        <el-button type="danger" size="small" @click="openAdd('payment')">收款</el-button>
         <el-button size="small" @click="openAdd('adj')">调整</el-button>
       </div>
       <div class="folio-summary">
-        <span>消费 <b class="money-pos">{{ fmtMoney(summary.charges) }}</b></span>
-        <span>已收 <b class="money-neg">{{ fmtMoney(summary.paid) }}</b></span>
-        <span>余额 <b :class="folio.balance > 0 ? 'money-pos' : folio.balance < 0 ? 'money-neg' : ''">{{ fmtMoney(folio.balance) }}</b></span>
+        <span>消费 <b class="money-neg">-{{ fmtMoney(summary.charges) }}</b></span>
+        <span>收款 <b class="money-pos">+{{ fmtMoney(summary.paid) }}</b></span>
+        <span>余额 <b :class="balance > 0 ? 'money-pos' : balance < 0 ? 'money-neg' : ''">{{ balance > 0 ? '+' : balance < 0 ? '-' : '' }}{{ fmtMoney(Math.abs(balance)) }}</b></span>
       </div>
     </div>
 
@@ -89,6 +89,7 @@ import { fmtMoney, RES_STATUS, PAY_METHODS } from '../utils/format';
 
 const props = defineProps({
   reservationId: { type: [Number, String], default: null },
+  plain: Boolean,
 });
 const emit = defineEmits(['changed']);
 
@@ -109,12 +110,18 @@ const summary = computed(() => {
   return { charges, paid };
 });
 
+// 余额 = 已收 − 消费（消费减少余额、收款增加余额）
+const balance = computed(() => {
+  const s = summary.value;
+  return Math.round((s.paid - s.charges) * 100) / 100;
+});
+
 const categoryOptions = computed(() => {
   if (addForm.item_type === 'payment') return ['房费', '杂费', '预付'];
   if (addForm.item_type === 'adj') return ['调整', '补房费', '冲减'];
   return ['迷你吧', '洗衣', '电话', '赔偿', '早餐', '其他'];
 });
-const addTitle = computed(() => ({ extra_charge: '加账', payment: '收款', adj: '账务调整' }[addForm.item_type] || '加账'));
+const addTitle = computed(() => ({ extra_charge: '消费', payment: '收款', adj: '账务调整' }[addForm.item_type] || '消费'));
 
 function itemTypeText(t) {
   return { room_charge: '房费', extra_charge: '杂费', deposit: '押金', payment: '收款', adj: '调整', info: '备注' }[t] || t;

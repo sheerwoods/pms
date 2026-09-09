@@ -30,12 +30,12 @@ function nightsBetween(a, b) {
   return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000);
 }
 
-// 生成订单号 RSV+时间戳+自增序号（保证唯一）
+// 生成订单号：时间戳+自增序号（保证唯一，长度 16 位）
 let orderSeq = 0;
 function genOrderNo() {
   const d = new Date();
   orderSeq = (orderSeq + 1) % 10000;
-  const base = `RSV${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  const base = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}`;
   return base + pad(orderSeq, 4);
 }
 
