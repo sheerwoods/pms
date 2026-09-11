@@ -115,6 +115,8 @@
         @walkin="openWalkin"
         @set-house-status="setHouseStatus"
         @open-order="openOrder"
+        @card="doCard"
+        @read-card="doReadCard"
       />
     </div>
 
@@ -122,8 +124,10 @@
     <ReservationForm v-model:visible="bookingVisible" mode="create" :initial="initialForm" @saved="onSaved" />
     <ReservationForm v-model:visible="walkinVisible" mode="walkin" :initial="initialForm" @saved="onSaved" />
     <ReservationForm v-model:visible="editVisible" mode="edit" :reservation="currentRes" @saved="onSaved" />
-    <CheckInDialog v-model:visible="checkinVisible" :reservation="currentRes" @saved="onSaved" />
+    <CheckInDialog v-model:visible="checkinVisible" :reservation="currentRes" @saved="onSaved" @card="openCard" />
     <CheckOutDialog v-model:visible="checkoutVisible" :reservation="currentRes" @saved="onSaved" />
+    <CardWriteDialog v-model:visible="cardWriteVisible" :payload="cardPayload" @saved="onSaved" @read="doReadCard" />
+    <CardReadDialog v-model:visible="cardReadVisible" />
     <ChangeRoomDialog v-model:visible="changeRoomVisible" :reservation="currentRes" :unit-id="currentUnitId" @saved="onSaved" />
     <FolioDialog v-model:visible="folioVisible" :reservation-id="currentRes?.id" @changed="onSaved" />
     <OrderDetailDialog v-model:visible="orderDetailVisible" :reservation-id="currentOrderId" :room-id="currentRoomId" @changed="onSaved" />
@@ -146,6 +150,8 @@ import FolioDialog from '../components/FolioDialog.vue';
 import RoomDetailPanel from '../components/RoomDetailPanel.vue';
 import OrderDetailDialog from '../components/OrderDetailDialog.vue';
 import RenewDialog from '../components/RenewDialog.vue';
+import CardWriteDialog from '../components/CardWriteDialog.vue';
+import CardReadDialog from '../components/CardReadDialog.vue';
 
 const date = ref(fmtDate());
 const roomTypes = ref([]);
@@ -176,6 +182,9 @@ const orderDetailVisible = ref(false);
 const currentOrderId = ref(null);
 const currentRoomId = ref(null);
 const renewVisible = ref(false);
+const cardWriteVisible = ref(false);
+const cardReadVisible = ref(false);
+const cardPayload = ref(null);
 
 const floors = computed(() => [...new Set(statusRooms.value.map((x) => x.room.floor))].sort((a, b) => a - b));
 
@@ -409,6 +418,33 @@ function openOrder() {
   currentOrderId.value = item.reservation.id;
   currentRoomId.value = item.room.id;
   orderDetailVisible.value = true;
+}
+function openCard(payload) {
+  cardPayload.value = payload;
+  cardWriteVisible.value = true;
+}
+function doReadCard() {
+  cardReadVisible.value = true;
+}
+function doCard() {
+  const item = detailItem.value;
+  const res = item && item.reservation;
+  if (!item || !res) return;
+  const checkIn = res.actual_check_in ? String(res.actual_check_in).slice(0, 10) : res.check_in_date;
+  const checkOut = res.unit_check_out_date || res.check_out_date;
+  openCard({
+    reservation_id: res.id,
+    guest_name: res.unit_guest_name || res.guest_name,
+    check_in_date: checkIn,
+    check_out_date: checkOut,
+    rooms: [{
+      unit_id: res.unit_id || null,
+      room_id: item.room.id,
+      room_no: item.room.room_no,
+      guest_name: res.unit_guest_name || res.guest_name,
+      check_out_date: checkOut,
+    }],
+  });
 }
 function openBooking() {
   initialForm.value = { room_id: detailItem.value.room.id, room_type_id: detailItem.value.room.type_id };

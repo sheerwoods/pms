@@ -30,6 +30,7 @@ function initSchema() {
       floor INTEGER DEFAULT 1,
       type_id INTEGER REFERENCES room_types(id),
       status TEXT NOT NULL DEFAULT 'clean',   -- clean / dirty / ooo
+      lock_no TEXT DEFAULT '',                -- 门锁系统7位房号（空=按规则自动生成）
       remark TEXT DEFAULT ''
     );
     CREATE TABLE IF NOT EXISTS guests (
@@ -176,6 +177,27 @@ function initSchema() {
       created_at TEXT DEFAULT (datetime('now','localtime')),
       UNIQUE(kind, name)
     );
+    CREATE TABLE IF NOT EXISTS card_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      action TEXT NOT NULL,                   -- guest / master / emergency / multi_floor / employee / clock / room_lock_no / checkout / checkout2 / report_loss / release / clear / read ...
+      reservation_id INTEGER REFERENCES reservations(id),
+      room_id INTEGER REFERENCES rooms(id),
+      room_no TEXT DEFAULT '',
+      lock_no TEXT DEFAULT '',
+      card_type INTEGER,
+      card_no INTEGER,
+      guest_name TEXT DEFAULT '',
+      begin_time TEXT DEFAULT '',
+      end_time TEXT DEFAULT '',
+      special_room_list TEXT DEFAULT '',
+      floor1 INTEGER DEFAULT 0,
+      floor2 INTEGER DEFAULT 0,
+      floor3 INTEGER DEFAULT 0,
+      result_code INTEGER DEFAULT 0,
+      result_msg TEXT DEFAULT '',
+      operator TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
     CREATE INDEX IF NOT EXISTS idx_res_status ON reservations(status);
     CREATE INDEX IF NOT EXISTS idx_res_room ON reservations(room_id, status);
     CREATE INDEX IF NOT EXISTS idx_folio_res ON folio_items(reservation_id);
@@ -188,10 +210,30 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_folio_settle_res ON folio_settlements(reservation_id, kind);
     CREATE INDEX IF NOT EXISTS idx_res_room_res ON reservation_rooms(reservation_id);
     CREATE INDEX IF NOT EXISTS idx_res_room_room ON reservation_rooms(room_id);
+    CREATE INDEX IF NOT EXISTS idx_card_logs_created ON card_logs(created_at);
+    CREATE INDEX IF NOT EXISTS idx_card_logs_res ON card_logs(reservation_id);
   `);
 
   // 默认系统设置：夜审时间（HH:MM）
   run("INSERT OR IGNORE INTO settings (key, value) VALUES ('night_audit_time', '06:00')");
+
+  // 默认门锁制卡设置
+  run("INSERT OR IGNORE INTO settings (key, value) VALUES ('card_enabled', '1')");
+  run("INSERT OR IGNORE INTO settings (key, value) VALUES ('card_port', '0')");
+  run("INSERT OR IGNORE INTO settings (key, value) VALUES ('card_building', '01')");
+  run("INSERT OR IGNORE INTO settings (key, value) VALUES ('card_sub', '1')");
+  run("INSERT OR IGNORE INTO settings (key, value) VALUES ('card_db_user', '')");
+  run("INSERT OR IGNORE INTO settings (key, value) VALUES ('card_db_password', '')");
+
+  // 旧库升级：早期版本把串口写死为 3（未经核实），改为默认不设置，由门锁系统自身配置决定
+  if (!get("SELECT value FROM settings WHERE key='card_port_default_v2'")) {
+    run("UPDATE settings SET value='0' WHERE key='card_port' AND value='3'");
+    run("INSERT INTO settings (key, value) VALUES ('card_port_default_v2', '1')");
+  }
+
+  // 旧库升级：rooms 增加门锁房号覆盖列
+  const roomCols = q('PRAGMA table_info(rooms)').map((c) => c.name);
+  if (!roomCols.includes('lock_no')) run("ALTER TABLE rooms ADD COLUMN lock_no TEXT DEFAULT ''");
 
   // 旧库升级：为已存在的 reservations 表补充新字段
   const resCols = q('PRAGMA table_info(reservations)').map((c) => c.name);

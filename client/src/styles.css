@@ -28,7 +28,8 @@ html, body, #app {
 .header .top-menu { border-bottom: none; }
 .header .header-right { display: flex; align-items: center; gap: 18px; }
 .header .today-stats { display: flex; gap: 22px; }
-.header .na-trigger { font-size: 14px; color: #1c7ed6; display: inline-flex; align-items: center; gap: 4px; }
+.header .na-trigger,
+.header .read-card-trigger { font-size: 14px; color: #1c7ed6; display: inline-flex; align-items: center; gap: 4px; }
 .header .stat { font-size: 13px; color: #868e96; display: flex; align-items: center; gap: 4px; }
 .header .stat .num { font-size: 17px; font-weight: 700; color: #343a40; }
 .header .stat .num.blue { color: #1c7ed6; }

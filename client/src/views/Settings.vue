@@ -13,6 +13,11 @@
       <el-tab-pane label="客源渠道" name="source">
         <DictManager kind="source" hint="预订表单的订单来源渠道。" />
       </el-tab-pane>
+      <el-tab-pane label="门锁制卡" name="card">
+        <CardSettings />
+        <el-divider />
+        <CardManagerPanel />
+      </el-tab-pane>
     </el-tabs>
   </el-card>
 </template>
@@ -20,6 +25,8 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import DictManager from '../components/DictManager.vue';
+import CardSettings from '../components/CardSettings.vue';
+import CardManagerPanel from '../components/CardManagerPanel.vue';
 import { loadDicts } from '../utils/dict';
 
 const activeTab = ref('charge_category');

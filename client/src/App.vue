@@ -22,6 +22,10 @@
         </el-menu>
       </div>
       <div class="header-right">
+        <el-button class="read-card-trigger" text @click="readCardVisible = true">
+          <el-icon><CreditCard /></el-icon>
+          <span>读卡</span>
+        </el-button>
         <div class="today-stats" v-if="store.stats">
           <div class="stat"><span class="num">{{ store.stats.arrivals }}</span>今日到店</div>
           <div class="stat"><span class="num warn">{{ store.stats.departures }}</span>今日离店</div>
@@ -57,6 +61,7 @@
     <el-main class="main">
       <router-view />
     </el-main>
+    <CardReadDialog v-model:visible="readCardVisible" />
   </el-container>
 </template>
 
@@ -68,9 +73,11 @@ import { store } from './store';
 import http from './api';
 import { fmtMoney } from './utils/format';
 import { loadDicts } from './utils/dict';
+import CardReadDialog from './components/CardReadDialog.vue';
 
 const route = useRoute();
 
+const readCardVisible = ref(false);
 const naVisible = ref(false);
 const naRunning = ref(false);
 const naAuditTime = ref('06:00');

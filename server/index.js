@@ -26,6 +26,7 @@ app.use('/api', require('./routes/ar'));
 app.use('/api', require('./routes/stats'));
 app.use('/api', require('./routes/night_audit'));
 app.use('/api', require('./routes/settings'));
+app.use('/api', require('./routes/card'));
 
 // API 404
 app.use('/api', (req, res) => res.status(404).json({ error: '接口不存在' }));

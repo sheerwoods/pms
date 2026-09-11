@@ -146,7 +146,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { Reading, MagicStick, Plus } from '@element-plus/icons-vue';
 import http from '../api';
 import { fmtMoney } from '../utils/format';
@@ -305,8 +305,37 @@ async function confirm() {
     await http.post(`/reservations/${props.reservation.id}/check-in`, { rooms });
     ElMessage.success(`已入住 ${rooms.length} 间`);
     emit('saved');
+    // 入住成功后提示立即制门锁卡
+    try {
+      await ElMessageBox.confirm(`已入住 ${rooms.length} 间，是否立即为客人制门锁卡？`, '制卡提示', {
+        type: 'success',
+        confirmButtonText: '立即制卡',
+        cancelButtonText: '暂不制卡',
+      });
+      emit('card', buildCardPayload(targets, rooms));
+    } catch (e) { /* 用户选择暂不制卡 */ }
     emit('update:visible', false);
   } catch (e) { /* 已提示 */ } finally { saving.value = false; }
+}
+
+// 组装制卡弹窗入参（rooms 为提交的入住房间，targets 为本地行）
+function buildCardPayload(targets, rooms) {
+  const d = detail.value || {};
+  const byId = {};
+  rooms.forEach((r) => { byId[r.id] = r; });
+  return {
+    reservation_id: d.id || props.reservation?.id,
+    guest_name: d.guest_name || props.reservation?.guest_name || '',
+    check_in_date: d.actual_check_in ? String(d.actual_check_in).slice(0, 10) : d.check_in_date,
+    check_out_date: d.check_out_date,
+    rooms: targets.map((t) => ({
+      unit_id: t.id,
+      room_id: byId[t.id]?.room_id || t.room_id,
+      room_no: t.room_no || '',
+      guest_name: (byId[t.id]?.guest_name || '').trim(),
+      check_out_date: t.check_out_date || d.check_out_date,
+    })),
+  };
 }
 
 function reset() {

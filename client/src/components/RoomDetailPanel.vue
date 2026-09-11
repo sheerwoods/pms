@@ -120,7 +120,7 @@ const props = defineProps({
   item: { type: Object, default: null },
   summary: { type: Object, default: null }, // { consumption, payment, balance }
 });
-const emit = defineEmits(['close', 'checkout', 'edit', 'renew', 'change-room', 'folio', 'checkin', 'book', 'walkin', 'set-house-status', 'open-order']);
+const emit = defineEmits(['close', 'checkout', 'edit', 'renew', 'change-room', 'folio', 'checkin', 'book', 'walkin', 'set-house-status', 'open-order', 'card', 'read-card']);
 
 const stay = computed(() => props.item?.reservation || null);
 // 该间在住人：入住人 + 同住人（详情里显示全部）
@@ -196,6 +196,8 @@ const actionGroups = computed(() => {
     groups.push({ label: '接待', items: [
       { key: 'ext', text: '续住', event: 'renew', type: 'primary', disabled: !dueToday, title: dueToday ? '' : '仅可对今日离店的房间续住' },
       { key: 'chg', text: '换房', event: 'change-room', type: 'primary', plain: true },
+      { key: 'card', text: '制卡', event: 'card', type: 'success' },
+      { key: 'read', text: '读卡', event: 'read-card', type: 'info', plain: true },
     ] });
     groups.push({ label: '房态', items: houseActions() });
   } else if (res && ['cancelled', 'no_show', 'checked_out'].includes(res.status)) {
@@ -228,6 +230,12 @@ const actionGroups = computed(() => {
       { key: 'ulock-clean', text: '解锁(干净)', status: 'clean', event: 'set-house-status', type: 'primary', plain: true },
       { key: 'ulock-dirty', text: '解锁(脏)', status: 'dirty', event: 'set-house-status', type: 'warning', plain: true },
     ] });
+  }
+
+  // 非在住状态也提供「读卡」入口（核对卡片）
+  const hasRead = groups.some((g) => g.items.some((a) => a.event === 'read-card'));
+  if (!hasRead) {
+    groups.push({ label: '门锁', items: [{ key: 'read', text: '读卡', event: 'read-card', type: 'info', plain: true }] });
   }
   return groups;
 });
