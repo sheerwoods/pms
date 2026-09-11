@@ -170,10 +170,13 @@ const headerBadges = computed(() => {
 // ---- 快捷操作分组 ----
 const houseActions = () => {
   const s = props.item.room.status;
+  const isVacant = ['vacant_clean', 'vacant_dirty'].includes(props.item?.eff_status);
   const list = [];
   if (s === 'dirty') list.push({ key: 'clean', text: '置净', status: 'clean', type: 'primary', event: 'set-house-status' });
   else if (s === 'clean') list.push({ key: 'dirty', text: '置脏', status: 'dirty', type: 'warning', event: 'set-house-status' });
   if (s !== 'ooo') list.push({ key: 'ooo', text: '维修封房', status: 'ooo', type: 'danger', event: 'set-house-status' });
+  // 锁房：仅空房可用（服务端同样校验）
+  if (isVacant) list.push({ key: 'lock', text: '锁房', status: 'locked', type: 'warning', plain: true, event: 'set-house-status' });
   return list;
 };
 
@@ -218,6 +221,12 @@ const actionGroups = computed(() => {
     groups.push({ label: '房态', items: [
       { key: 'uclean', text: '解封(干净)', status: 'clean', event: 'set-house-status', type: 'primary', plain: true },
       { key: 'udirty', text: '解封(脏)', status: 'dirty', event: 'set-house-status', type: 'warning', plain: true },
+    ] });
+  } else if (st === 'locked') {
+    groups.push({ label: '接待', items: [] });
+    groups.push({ label: '房态', items: [
+      { key: 'ulock-clean', text: '解锁(干净)', status: 'clean', event: 'set-house-status', type: 'primary', plain: true },
+      { key: 'ulock-dirty', text: '解锁(脏)', status: 'dirty', event: 'set-house-status', type: 'warning', plain: true },
     ] });
   }
   return groups;

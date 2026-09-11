@@ -238,6 +238,7 @@
             <el-button v-if="detail.status === 'reserved'" plain @click="openEdit">修改</el-button>
             <el-button v-if="detail.status === 'reserved'" type="danger" plain @click="doCancel">取消预定</el-button>
             <el-button plain @click="openFolio">账单</el-button>
+            <el-button plain @click="copyPage">复制页面</el-button>
           </div>
           <div v-else-if="viewMode === 'inhouse'" class="od-bottom">
             <template v-if="curRoom.status === 'checked_in'">
@@ -251,10 +252,12 @@
               <el-button type="success" plain @click="openCheckin">入住</el-button>
             </template>
             <el-button plain @click="openFolio">账单</el-button>
+            <el-button plain @click="copyPage">复制页面</el-button>
           </div>
           <div v-else class="od-bottom">
             <el-button v-if="detail.status === 'cancelled'" type="success" plain @click="doRestore">恢复预定</el-button>
             <el-button plain @click="openFolio">账单</el-button>
+            <el-button plain @click="copyPage">复制页面</el-button>
           </div>
         </el-tab-pane>
 
@@ -293,6 +296,7 @@
 
 <script setup>
 import { ref, reactive, computed, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { UserFilled } from '@element-plus/icons-vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import http from '../api';
@@ -316,6 +320,7 @@ const props = defineProps({
 });
 const emit = defineEmits(['update:visible', 'changed']);
 
+const router = useRouter();
 const tab = ref('guest');
 const today = fmtDate();
 const detail = ref(null);
@@ -593,6 +598,11 @@ async function saveRoom() {
 function openCheckout() { checkoutVisible.value = true; }
 function openChangeRoom() { changeRoomVisible.value = true; }
 function openFolio() { folioVisible.value = true; }
+// 复制页面：在新标签页打开一个全新的 PMS 房态图，便于并行操作
+function copyPage() {
+  const { href } = router.resolve({ name: 'room-status' });
+  window.open(href, '_blank', 'noopener');
+}
 async function doCancel() {
   if (!detail.value) return;
   try {

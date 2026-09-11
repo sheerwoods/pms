@@ -172,22 +172,29 @@ function attachRoomList(list) {
   return list;
 }
 
-// 房间是否可用（未被占用/维修）——兼容旧的 reservations.room_id 与新 reservation_rooms
+// 房间是否可用（未被占用/维修）——以子单状态为准，父单 room_id 仅对无子单的历史订单回退
 function isRoomAvailable(roomId, excludeResId = null) {
   if (!roomId) return false;
   const room = get('SELECT * FROM rooms WHERE id=?', roomId);
-  if (!room || room.status === 'ooo') return false;
+  if (!room || room.status === 'ooo' || room.status === 'locked') return false;
   const ex = excludeResId || 0;
-  const active = get(
-    "SELECT id FROM reservations WHERE room_id=? AND status IN ('reserved','checked_in') AND id != ? LIMIT 1",
-    roomId, ex
-  );
-  if (active) return false;
+  // 该房有「待入住/在住」子单 → 占用（单间已退但父单仍指向该房的脏数据不再误占）
   const rr = get(
-    "SELECT r.id FROM reservation_rooms rr JOIN reservations r ON r.id=rr.reservation_id WHERE rr.room_id=? AND r.status IN ('reserved','checked_in') AND r.id != ? LIMIT 1",
+    `SELECT r.id FROM reservation_rooms rr JOIN reservations r ON r.id=rr.reservation_id
+     WHERE rr.room_id=? AND r.status IN ('reserved','checked_in') AND rr.status IN ('pending','checked_in')
+       AND r.id != ? LIMIT 1`,
     roomId, ex
   );
-  return !rr;
+  if (rr) return false;
+  // 无任何子行的历史订单回退父单 room_id
+  const legacy = get(
+    `SELECT id FROM reservations
+     WHERE room_id=? AND status IN ('reserved','checked_in') AND id != ?
+       AND NOT EXISTS (SELECT 1 FROM reservation_rooms rr WHERE rr.reservation_id=reservations.id)
+     LIMIT 1`,
+    roomId, ex
+  );
+  return !legacy;
 }
 
 function validateReservation(body, { isHourly = false } = {}) {

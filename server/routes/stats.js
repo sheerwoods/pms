@@ -28,8 +28,9 @@ router.get('/stats/today', wrap((req, res) => {
   ).c;
   const totalRooms = get('SELECT COUNT(*) AS c FROM rooms').c || 1;
   const ooo = get("SELECT COUNT(*) AS c FROM rooms WHERE status='ooo'").c;
+  const locked = get("SELECT COUNT(*) AS c FROM rooms WHERE status='locked'").c;
   const occupied = inHouse;
-  const vacant = Math.max(0, totalRooms - ooo - occupied);
+  const vacant = Math.max(0, totalRooms - ooo - locked - occupied);
   // 营收按营业日归集，口径与营业报表 charge_total 一致（房费+杂费）
   const bd = currentBusinessDate();
   const revenue = get(

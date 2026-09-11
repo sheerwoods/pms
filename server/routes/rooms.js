@@ -76,12 +76,29 @@ router.delete('/rooms/:id', wrap((req, res) => {
   res.json({ ok: true });
 }));
 
-// 客房状态：clean / dirty / ooo（置维修可同时写入备注）
+// 客房状态：clean / dirty / ooo（维修，可带备注）/ locked（锁房，仅空房且须填原因）
 router.put('/rooms/:id/status', wrap((req, res) => {
   const { status, remark } = req.body;
-  if (!['clean', 'dirty', 'ooo'].includes(status)) throw new AppError('无效的客房状态');
-  if (remark != null) run('UPDATE rooms SET status=?, remark=? WHERE id=?', status, String(remark), req.params.id);
-  else run('UPDATE rooms SET status=? WHERE id=?', status, req.params.id);
+  if (!['clean', 'dirty', 'ooo', 'locked'].includes(status)) throw new AppError('无效的客房状态');
+  const room = get('SELECT * FROM rooms WHERE id=?', req.params.id);
+  if (!room) throw new AppError('房间不存在', 404);
+  if (status === 'locked') {
+    // 仅空房可锁：该房不得存在在住/预抵占用
+    const busy = get(
+      `SELECT 1 FROM reservation_rooms rr JOIN reservations r ON r.id=rr.reservation_id
+       WHERE rr.room_id=? AND rr.status IN ('pending','checked_in')
+         AND r.status NOT IN ('cancelled','no_show','checked_out') LIMIT 1`,
+      room.id
+    ) || get(
+      `SELECT 1 FROM reservations WHERE room_id=? AND status IN ('reserved','checked_in')
+         AND NOT EXISTS (SELECT 1 FROM reservation_rooms rr WHERE rr.reservation_id=reservations.id) LIMIT 1`,
+      room.id
+    );
+    if (busy) throw new AppError('仅空房可锁房');
+    if (!String(remark || '').trim()) throw new AppError('请填写锁房原因');
+  }
+  if (remark != null) run('UPDATE rooms SET status=?, remark=? WHERE id=?', status, String(remark), room.id);
+  else run('UPDATE rooms SET status=? WHERE id=?', status, room.id);
   res.json({ ok: true });
 }));
 
@@ -155,6 +172,8 @@ router.get('/room-status', wrap((req, res) => {
     const item = { room, eff_status: '', reservation: null, balance: null };
     if (room.status === 'ooo') {
       item.eff_status = 'ooo';
+    } else if (room.status === 'locked') {
+      item.eff_status = 'locked';
     } else if (byRoomIn[room.id]) {
       const stay = byRoomIn[room.id];
       item.reservation = stay;

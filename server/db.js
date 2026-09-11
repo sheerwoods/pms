@@ -2,7 +2,7 @@
 const path = require('path');
 const fs = require('fs');
 const { DatabaseSync } = require('node:sqlite');
-const { fmt, addDays, nightsBetween, genOrderNo, round2, timeToMinutes, businessDateOf } = require('./utils');
+const { timeToMinutes, businessDateOf } = require('./utils');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -380,122 +380,31 @@ function seed() {
   const t = get('SELECT COUNT(*) AS c FROM room_types');
   if (t.c > 0) return;
 
-  // ---- 房型 ----
+  // ---- 房型（门市价后续可在系统中调整）----
   const typeNames = [
-    ['标准大床房', 288],
-    ['标准双床房', 328],
-    ['豪华大床房', 458],
-    ['商务套房', 688],
+    ['标准大床房', 0],
+    ['河景大床房', 0],
+    ['城景双床房', 0],
   ];
   const typeId = [];
   for (const [n, p] of typeNames) {
     typeId.push(Number(run('INSERT INTO room_types (name, base_price) VALUES (?,?)', n, p).lastInsertRowid));
   }
 
-  // ---- 房间：3层×8 ----
-  const plans = [
-    [1, 101, 108, typeId[0]],
-    [2, 201, 208, typeId[1]],
-    [3, 301, 304, typeId[2]],
-    [3, 305, 308, typeId[3]],
-  ];
-  const rid = {};
-  for (const [floor, from, to, tid] of plans) {
-    for (let n = from; n <= to; n++) {
-      rid[String(n)] = Number(run('INSERT INTO rooms (room_no, floor, type_id) VALUES (?,?,?)', String(n), floor, tid).lastInsertRowid);
-    }
+  // ---- 房间：1栋 8-12楼，共 111 间 ----
+  // 8楼（19间）：01-10 河景大床房，11/12/15/16 城景双床房，17-22 河景大床房
+  // 9-12楼（各23间）：01-03 标准大床房，05-12/15/16 河景大床房，17-23/25-27 城景双床房
+  const addRooms = (floor, tid, nos) => {
+    for (const no of nos) run('INSERT INTO rooms (room_no, floor, type_id) VALUES (?,?,?)', no, floor, tid);
+  };
+  addRooms(8, typeId[1], ['8801', '8802', '8803', '8805', '8806', '8807', '8808', '8809', '8810', '8817', '8818', '8819', '8820', '8821', '8822']);
+  addRooms(8, typeId[2], ['8811', '8812', '8815', '8816']);
+  for (const f of [9, 10, 11, 12]) {
+    const p = f <= 9 ? `8${f}` : String(f);   // 房号前缀：8楼→88、9楼→89、10楼及以上→楼层号
+    addRooms(f, typeId[0], [`${p}01`, `${p}02`, `${p}03`]);
+    addRooms(f, typeId[1], [`${p}05`, `${p}06`, `${p}07`, `${p}08`, `${p}09`, `${p}10`, `${p}11`, `${p}12`, `${p}15`, `${p}16`]);
+    addRooms(f, typeId[2], [`${p}17`, `${p}18`, `${p}19`, `${p}20`, `${p}21`, `${p}22`, `${p}23`, `${p}25`, `${p}26`, `${p}27`]);
   }
-
-  // ---- 客房状态演示 ----
-  run("UPDATE rooms SET status='dirty' WHERE room_no IN ('103','201')");
-  run("UPDATE rooms SET status='ooo' WHERE room_no='305'");
-
-  // ---- 宾客 ----
-  const guestRows = [
-    ['张伟', '13800138001'],
-    ['李娜', '13800138002'],
-    ['王强', '13800138003'],
-    ['赵敏', '13800138004'],
-    ['陈静', '13800138005'],
-    ['刘洋', '13800138006'],
-    ['孙丽', '13800138007'],
-    ['周杰', '13800138008'],
-  ];
-  const gid = guestRows.map(([n, p]) =>
-    Number(run('INSERT INTO guests (name, phone) VALUES (?,?)', n, p).lastInsertRowid)
-  );
-
-  const T = fmt(new Date());
-  const D = (n) => addDays(T, n);
-
-  function mkRes({ gi, roomNo, typeIdx, ci, co, rate, status = 'reserved', source = '散客', sourceOrderNo = '', rooms = 1, booking_type = '全日房', aci = null, aco = null }) {
-    let nights, checkout = co;
-    if (booking_type === '钟点房') {
-      nights = 1;
-      checkout = ci;
-    } else {
-      nights = nightsBetween(ci, co);
-    }
-    const dates = [];
-    for (let i = 0; i < nights; i++) dates.push(addDays(ci, i));
-    const ratesJson = JSON.stringify(Object.fromEntries(dates.map((d) => [d, rate])));
-    const total = round2(nights * rate * rooms);
-    return Number(run(
-      `INSERT INTO reservations
-        (order_no, guest_id, guest_name, guest_phone, room_type_id, room_id,
-         check_in_date, check_out_date, nights, adults, rate, rooms, total_amount,
-         status, booking_type, source, source_order_no, rates, actual_check_in, actual_check_out)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      genOrderNo(), gid[gi], guestRows[gi][0], guestRows[gi][1], typeId[typeIdx], rid[roomNo],
-      ci, checkout, nights, 1, rate, rooms, total, status, booking_type, source, sourceOrderNo, ratesJson, aci, aco
-    ).lastInsertRowid);
-  }
-  function folio(resId, gi, itemType, category, desc, amount, method = '', dateStr = null) {
-    if (dateStr) {
-      run('INSERT INTO folio_items (reservation_id, guest_id, item_type, category, description, amount, method, created_at) VALUES (?,?,?,?,?,?,?,?)',
-        resId, gid[gi], itemType, category, desc, amount, method, dateStr + ' 12:00:00');
-    } else {
-      run('INSERT INTO folio_items (reservation_id, guest_id, item_type, category, description, amount, method) VALUES (?,?,?,?,?,?,?)',
-        resId, gid[gi], itemType, category, desc, amount, method);
-    }
-  }
-
-  // 1) 在住：101 张伟（T-1 入住，T+1 离店，2晚）
-  let r = mkRes({ gi: 0, roomNo: '101', typeIdx: 0, ci: D(-1), co: D(1), rate: 288, status: 'checked_in', aci: D(-1) });
-  folio(r, 0, 'room_charge', '房费', `房费(${D(-1)})`, 288, '', D(-1));
-  folio(r, 0, 'room_charge', '房费', `房费(${T})`, 288, '', T);
-  folio(r, 0, 'payment', '微信收款', '预付房费', -200, '微信', D(-1));
-
-  // 2) 在住：202 李娜（今天入住，T+2 离店，2晚）
-  r = mkRes({ gi: 1, roomNo: '202', typeIdx: 1, ci: T, co: D(2), rate: 328, status: 'checked_in', aci: T });
-  folio(r, 1, 'room_charge', '房费', `房费(${T})`, 328, '', T);
-  folio(r, 1, 'room_charge', '房费', `房费(${D(1)})`, 328, '', D(1));
-
-  // 3) 在住·今日预离：301 王强（T-3 入住，T 离店，3晚）
-  r = mkRes({ gi: 2, roomNo: '301', typeIdx: 2, ci: D(-3), co: T, rate: 458, status: 'checked_in', aci: D(-3) });
-  for (let i = -3; i < 0; i++) folio(r, 2, 'room_charge', '房费', `房费(${D(i)})`, 458, '', D(i));
-  folio(r, 2, 'extra_charge', '洗衣', '洗衣服务', 48, '', D(-2));
-  folio(r, 2, 'payment', '现金收款', '预付房费', -500, '现金', D(-3));
-
-  // 4) 预订·今日预抵：104 赵敏（T 入住，T+2 离店）
-  mkRes({ gi: 3, roomNo: '104', typeIdx: 0, ci: T, co: D(2), rate: 288 });
-
-  // 5) 预订·未来到店：205 陈静（T+2 入住，T+4 离店，美团渠道 2 间）
-  mkRes({ gi: 4, roomNo: '205', typeIdx: 1, ci: D(2), co: D(4), rate: 328, source: '美团', sourceOrderNo: 'MT20260809120001', rooms: 2 });
-
-  // 6) 已退：106 刘洋（T-4 入住，T-1 离店，3晚，已结清）
-  r = mkRes({ gi: 5, roomNo: '106', typeIdx: 0, ci: D(-4), co: D(-1), rate: 288, status: 'checked_out', aci: D(-4), aco: D(-1) });
-  for (let i = -4; i < -1; i++) folio(r, 5, 'room_charge', '房费', `房费(${D(i)})`, 288, '', D(i));
-  folio(r, 5, 'payment', '现金收款', '结账付款', -364, '现金', D(-1));
-
-  // 7) 已取消：107 孙丽
-  mkRes({ gi: 6, roomNo: '107', typeIdx: 0, ci: D(-2), co: D(-1), rate: 288, status: 'cancelled' });
-
-  // 8) 预订·未来：302 周杰（T+1 入住，T+2 离店）
-  mkRes({ gi: 7, roomNo: '302', typeIdx: 2, ci: D(1), co: D(2), rate: 458 });
-
-  // 9) 钟点房·预订：303 陈静（今天到店，固定 3 小时）
-  mkRes({ gi: 4, roomNo: '303', typeIdx: 2, ci: T, co: T, rate: 128, booking_type: '钟点房' });
 
   console.log('[db] 已写入种子数据');
 }

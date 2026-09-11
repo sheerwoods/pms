@@ -421,17 +421,19 @@ function openWalkin() {
 }
 
 async function setHouseStatus(status) {
-  const labels = { clean: '设为干净', dirty: '设为脏', ooo: '维修封房' };
+  const labels = { clean: '设为干净', dirty: '设为脏', ooo: '维修封房', locked: '锁房' };
   const room = detailItem.value.room;
   const payload = { status };
-  // 置净/置脏无需确认；置维修需确认并可填写备注
-  if (status === 'ooo') {
+  // 置净/置脏无需确认；置维修需确认并可填备注；锁房需确认并必填原因
+  if (status === 'ooo' || status === 'locked') {
+    const isLock = status === 'locked';
     let input;
     try {
       ({ value: input } = await ElMessageBox.prompt(`确认将房间 ${room.room_no} ${labels[status]}？`, '提示', {
         type: 'warning',
-        inputPlaceholder: '维修备注（选填）',
+        inputPlaceholder: isLock ? '锁房原因（必填）' : '维修备注（选填）',
         inputValue: '',
+        inputValidator: (v) => (!isLock || String(v || '').trim() ? true : '请填写锁房原因'),
         confirmButtonText: '确定',
         cancelButtonText: '取消',
       }));
@@ -444,8 +446,8 @@ async function setHouseStatus(status) {
   ElMessage.success('客房状态已更新');
   await load();
   store.loadStats();
-  // 置净/置脏后关闭信息框；维修封房保留信息框以便查看备注
-  if (status === 'ooo') await refreshDetail();
+  // 置净/置脏/解锁后关闭信息框；维修封房、锁房保留信息框以便查看备注
+  if (status === 'ooo' || status === 'locked') await refreshDetail();
   else closeDetail();
 }
 

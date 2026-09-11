@@ -29,6 +29,7 @@ export const ROOM_STATUS = {
   occupied_clean: { text: '占净', color: '#1c7ed6', bg: '#e7f5ff' },
   occupied_dirty: { text: '占脏', color: '#7048e8', bg: '#f3f0ff' },
   ooo: { text: '维修', color: '#e03131', bg: '#fff5f5' },
+  locked: { text: '锁房', color: '#d6336c', bg: '#fff0f6' },
   expected: { text: '预抵', color: '#e8590c', bg: '#fff4e6' },
   due_out: { text: '预离', color: '#e07f00', bg: '#fff8e1' },
 };
