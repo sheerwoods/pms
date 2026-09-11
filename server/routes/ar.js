@@ -3,10 +3,10 @@ const express = require('express');
 const { q, get, run } = require('../db');
 const { withTx } = require('../tx');
 const { AppError, wrap } = require('../errors');
-const { round2 } = require('../utils');
+const { round2, now } = require('../utils');
 const { getBalance } = require('../folio');
 const {
-  genAccountCode, getAccount, accountTotals, applyReceiptTx,
+  genAccountCode, getAccount, requireActiveAccount, accountTotals, applyReceiptTx,
 } = require('../ar');
 const { postToArTx } = require('../settlement');
 
@@ -85,7 +85,13 @@ router.get('/ar/accounts/:id', wrap((req, res) => {
   const a = getAccount(req.params.id);
   if (!a) throw new AppError('AR 账户不存在', 404);
   const entries = q(
-    `SELECT cl.*, ROUND(cl.amount-cl.settled_amount,2) AS outstanding, r.order_no, rm.room_no
+    `SELECT cl.*, ROUND(cl.amount-cl.settled_amount,2) AS outstanding,
+            r.order_no, r.source_order_no, rm.room_no,
+            (SELECT MIN(fi.created_at)
+               FROM folio_settlements s
+               JOIN folio_allocations fa ON fa.settlement_id=s.id AND fa.side='charge'
+               JOIN folio_items fi ON fi.id=fa.item_id
+              WHERE s.city_ledger_id=cl.id AND s.kind='ar' AND s.revoked_at IS NULL) AS consumed_at
      FROM city_ledger cl
      LEFT JOIN reservations r ON r.id=cl.reservation_id
      LEFT JOIN rooms rm ON rm.id=r.room_id
@@ -149,6 +155,30 @@ router.get('/ar/entries', wrap((req, res) => {
   res.json({ list, totalOpen });
 }));
 
+// ============ 应收转账到其他 AR 账户（挂错单位时改正；已有回款核销不可转） ============
+router.post('/ar/entries/transfer', wrap((req, res) => {
+  const ids = [...new Set((req.body.entry_ids || []).map(Number).filter(Boolean))];
+  if (!ids.length) throw new AppError('请先勾选应收明细');
+  const target = requireActiveAccount(req.body.to_account_id);
+  const rows = q(`SELECT * FROM city_ledger WHERE id IN (${ids.map(() => '?').join(',')})`, ...ids);
+  if (rows.length !== ids.length) throw new AppError('应收明细不存在', 404);
+  const from = [...new Set(rows.map((x) => x.ar_account_id))];
+  if (from.length !== 1 || !from[0]) throw new AppError('所选明细须属于同一 AR 账户');
+  if (from[0] === target.id) throw new AppError('目标账户与当前账户相同');
+  const done = rows.find((x) => Number(x.settled_amount) > 0.005);
+  if (done) throw new AppError('所选明细中已有回款核销，不能转账');
+  res.json(withTx(() => {
+    const ph = ids.map(() => '?').join(',');
+    run(`UPDATE city_ledger SET ar_account_id=?, company=?, transferred_at=? WHERE id IN (${ph})`, target.id, target.name, now(), ...ids);
+    // 客账挂账批次同步改挂到新账户，保持追溯一致
+    run(`UPDATE folio_settlements SET ar_account_id=? WHERE revoked_at IS NULL AND city_ledger_id IN (${ph})`, target.id, ...ids);
+    return {
+      ok: true, count: ids.length, to: target.id, to_name: target.name,
+      amount: round2(rows.reduce((s, x) => s + (Number(x.amount) - Number(x.settled_amount)), 0)),
+    };
+  }));
+}));
+
 // ============ 多笔明细核销（勾选同额配对，金额须等于所选未结合计） ============
 router.post('/ar/entries/batch-settle', wrap((req, res) => {
   const ids = [...new Set((req.body.entry_ids || []).map(Number).filter(Boolean))];
@@ -182,7 +212,7 @@ router.delete('/ar/entries/:id', wrap((req, res) => {
   const e = get('SELECT * FROM city_ledger WHERE id=?', req.params.id);
   if (!e) throw new AppError('应收明细不存在', 404);
   const fromFolio = get('SELECT * FROM folio_settlements WHERE city_ledger_id=? AND revoked_at IS NULL', e.id);
-  if (fromFolio) throw new AppError('该应收由客账挂账生成，请在客账中「撤销结账」后再操作');
+  if (fromFolio) throw new AppError('该应收由客账挂账生成，不能删除；挂错单位请用「转账」改挂到其他账户');
   const allocs = get('SELECT COUNT(*) AS c FROM ar_allocations WHERE entry_id=?', e.id).c;
   if (allocs > 0) throw new AppError('该应收已有回款核销，请先冲销回款');
   withTx(() => {

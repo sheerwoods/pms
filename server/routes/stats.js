@@ -18,7 +18,7 @@ router.get('/stats/today', wrap((req, res) => {
   const departures = get(
     `SELECT COUNT(*) AS c FROM reservation_rooms rr JOIN reservations r ON r.id=rr.reservation_id
      WHERE rr.status='checked_in' AND r.status NOT IN ('cancelled','no_show')
-       AND COALESCE(rr.actual_check_out, r.check_out_date)=?`,
+       AND COALESCE(rr.actual_check_out, rr.check_out_date, r.check_out_date)=?`,
     T
   ).c;
   // 在住房间数（按在住子单计）

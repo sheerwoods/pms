@@ -46,14 +46,7 @@
           <el-table-column prop="room_no" label="房号" width="56" align="center">
             <template #default="{ row }">{{ row.room_no || '-' }}</template>
           </el-table-column>
-          <el-table-column label="类型" width="84">
-            <template #default="{ row }">
-              <el-tag size="small" :type="kindTag(row)" effect="plain">{{ kindText(row) }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="category" label="类别" width="90" />
-          <el-table-column prop="description" label="说明" min-width="130" />
-          <el-table-column prop="method" label="方式" width="76" />
+          <el-table-column prop="category" label="类别" min-width="120" />
           <el-table-column label="金额" width="118" align="right">
             <template #default="{ row }">
               <template v-if="row.item_type === 'info'"><span class="amt-zero">—</span></template>
@@ -230,18 +223,38 @@
         </el-descriptions>
 
         <el-divider content-position="left">应收明细</el-divider>
+        <div class="filter-row">
+          <el-select v-model="entryFilter.status" style="width: 120px">
+            <el-option label="未结账" value="open" />
+            <el-option label="已结账" value="settled" />
+            <el-option label="全部" value="" />
+          </el-select>
+          <el-date-picker v-model="entryFilter.range" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="开始营业日" end-placeholder="结束营业日" clearable style="width: 240px" />
+          <el-date-picker v-model="entryFilter.consumeRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="消费开始日" end-placeholder="消费结束日" clearable style="width: 240px" />
+          <el-date-picker v-model="entryFilter.transferRange" type="daterange" value-format="YYYY-MM-DD" range-separator="至" start-placeholder="转账开始日" end-placeholder="转账结束日" clearable style="width: 240px" />
+          <el-input v-model="entryFilter.keyword" placeholder="单号 / 外部单号 / 客人 / 备注" clearable style="width: 220px">
+            <template #prefix><el-icon><Search /></el-icon></template>
+          </el-input>
+          <span class="entry-hint">共 {{ filteredEntries.length }} 笔</span>
+        </div>
         <div class="entry-bar">
           <el-button size="small" type="primary" :disabled="!selEntries.length" @click="openBatch">
             选中结账<span v-if="selEntries.length">（¥{{ fmtMoney(selEntryTotal) }}）</span>
           </el-button>
-          <span class="entry-hint">勾选应收明细后按所选未结合计付款结账；单项可点「核销」。</span>
+          <el-button size="small" :disabled="!selUnsettled.length" @click="openTransfer">
+            转账到其他账户<span v-if="selUnsettled.length">（¥{{ fmtMoney(selUnsettledTotal) }}）</span>
+          </el-button>
+          <span class="entry-hint">勾选应收明细后按所选未结合计付款结账；挂错单位可转账到其他 AR 账户。</span>
         </div>
-        <el-table ref="entryTable" :data="acctDetail.entries" border size="small" max-height="260" @selection-change="onEntrySelect">
+        <el-table ref="entryTable" :data="filteredEntries" border size="small" max-height="260" @selection-change="onEntrySelect">
           <el-table-column type="selection" width="40" :selectable="(row) => row.outstanding > 0" />
           <el-table-column prop="business_date" label="营业日" width="100" />
-          <el-table-column prop="order_no" label="关联单号" width="160" />
+          <el-table-column prop="consumed_at" label="消费时间" width="150" show-overflow-tooltip />
+          <el-table-column prop="order_no" label="关联单号" width="150" />
+          <el-table-column prop="source_order_no" label="外部订单号" width="130" show-overflow-tooltip />
           <el-table-column prop="guest_name" label="客人" width="90" />
           <el-table-column prop="remark" label="备注" min-width="120" />
+          <el-table-column prop="transferred_at" label="转账时间" width="150" show-overflow-tooltip />
           <el-table-column label="挂账额" width="100" align="right">
             <template #default="{ row }"><b class="amt-in">{{ fmtMoney(row.amount) }}</b></template>
           </el-table-column>
@@ -303,17 +316,48 @@
         <el-button type="primary" :loading="receiptSaving" @click="submitReceipt">确认</el-button>
       </template>
     </el-dialog>
+
+    <!-- 应收转账到其他 AR 账户 -->
+    <el-dialog :model-value="transferVisible" title="转账到其他 AR 账户" width="440px" @update:model-value="transferVisible = $event">
+      <el-form :model="transferForm" label-width="90px">
+        <el-form-item label="转出账户">{{ acctDetail?.account?.name }}</el-form-item>
+        <el-form-item label="转账明细">
+          <div class="transfer-list">
+            <div v-for="e in selUnsettled" :key="e.id" class="transfer-row">
+              <span>{{ e.guest_name || '-' }}｜{{ e.order_no || ('#' + e.id) }}｜{{ e.remark || '-' }}</span>
+              <b class="bal-due">{{ fmtMoney(e.outstanding) }}</b>
+            </div>
+          </div>
+        </el-form-item>
+        <el-form-item label="合计">
+          <b class="bal-due">{{ fmtMoney(selUnsettledTotal) }}</b>
+        </el-form-item>
+        <el-form-item label="转入账户" required>
+          <el-select v-model="transferForm.to_account_id" filterable placeholder="选择目标账户" style="width: 100%">
+            <el-option v-for="a in transferAccounts" :key="a.id" :label="`${a.code || ''} ${a.name}`" :value="a.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="transferForm.remark" placeholder="选填" />
+        </el-form-item>
+      </el-form>
+      <div class="ar-hint">转账后该笔应收改挂到目标账户，客账侧的挂账记录同步指向新账户；已有回款核销的明细不能转账。</div>
+      <template #footer>
+        <el-button @click="transferVisible = false">取消</el-button>
+        <el-button type="primary" :loading="transferSaving" @click="submitTransfer">确认转账</el-button>
+      </template>
+    </el-dialog>
   </el-card>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, watch, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import http from '../api';
 import { store } from '../store';
 import { fmtMoney, fmtDate, RES_STATUS } from '../utils/format';
 import { nonArMethods } from '../utils/dict';
-import { moneyView, balanceView, itemKindOf, itemKindText, itemKindTag } from '../utils/money';
+import { moneyView, balanceView, itemKindOf, itemKindText } from '../utils/money';
 import FolioPanel from '../components/FolioPanel.vue';
 
 const activeTab = ref('folio');
@@ -321,7 +365,6 @@ const payMethods = computed(() => nonArMethods());
 const mv = (n) => moneyView(n);
 const kindOf = (row) => itemKindOf(row);
 const kindText = (row) => itemKindText(kindOf(row));
-const kindTag = (row) => itemKindTag(kindOf(row));
 
 // ---- 客账 ----
 const resOptions = ref([]);
@@ -433,12 +476,51 @@ async function toggleAccount(row) {
 // 账户详情
 const acctDetailVisible = ref(false);
 const acctDetail = ref(null);
+// 应收明细筛选：默认只看未结账
+const entryFilter = reactive({ status: 'open', range: [], consumeRange: [], transferRange: [], keyword: '' });
+// 日期范围匹配（字段含时间时取日期部分）
+function inDateRange(v, range) {
+  if (!range || range.length !== 2) return true;
+  const d = String(v || '').slice(0, 10);
+  return !!d && d >= range[0] && d <= range[1];
+}
+const filteredEntries = computed(() => {
+  const rows = acctDetail.value?.entries || [];
+  const { status, range, consumeRange, transferRange, keyword } = entryFilter;
+  const kw = keyword.trim().toLowerCase();
+  return rows.filter((r) => {
+    const isOpen = Number(r.outstanding) > 0.005;
+    if (status === 'open' && !isOpen) return false;
+    if (status === 'settled' && isOpen) return false;
+    if (range?.length === 2) {
+      const d = r.business_date || '';
+      if (d < range[0] || d > range[1]) return false;
+    }
+    if (!inDateRange(r.consumed_at, consumeRange)) return false;
+    if (!inDateRange(r.transferred_at, transferRange)) return false;
+    if (kw) {
+      const hay = `${r.order_no || ''} ${r.source_order_no || ''} ${r.guest_name || ''} ${r.remark || ''}`.toLowerCase();
+      if (!hay.includes(kw)) return false;
+    }
+    return true;
+  });
+});
+// 筛选变化后，清空已选（避免勾选到被隐藏的明细）
+watch(filteredEntries, () => {
+  selEntries.value = [];
+  entryTable.value?.clearSelection();
+});
 async function loadAcctDetail(id) {
   acctDetail.value = await http.get(`/ar/accounts/${id}`);
   selEntries.value = [];
   entryTable.value?.clearSelection();
 }
 async function openAcctDetail(row) {
+  entryFilter.status = 'open';
+  entryFilter.range = [];
+  entryFilter.consumeRange = [];
+  entryFilter.transferRange = [];
+  entryFilter.keyword = '';
   await loadAcctDetail(row.id);
   acctDetailVisible.value = true;
 }
@@ -450,6 +532,9 @@ const entryTable = ref(null);
 const selEntries = ref([]);
 const receiptForm = reactive({ entry_id: null, entry_ids: [], amount: 0, max: 0, method: '银行卡', remark: '' });
 const selEntryTotal = computed(() => round2(selEntries.value.reduce((s, r) => s + r.outstanding, 0)));
+// 可转账：所选明细均未发生回款核销
+const selUnsettled = computed(() => selEntries.value.filter((r) => !(Number(r.settled_amount) > 0.005)));
+const selUnsettledTotal = computed(() => round2(selUnsettled.value.reduce((s, r) => s + r.outstanding, 0)));
 const receiptTitle = computed(() => (receiptForm.entry_ids.length ? '选中结账' : (receiptForm.entry_id ? '单笔核销' : '账户回款')));
 const receiptHint = computed(() => (receiptForm.entry_ids.length
   ? '按所选明细逐笔核销，金额须等于所选未结合计。'
@@ -467,6 +552,43 @@ function openBatch() {
   receiptForm.remark = '';
   receiptVisible.value = true;
 }
+// 转账到其他 AR 账户
+const transferVisible = ref(false);
+const transferSaving = ref(false);
+const transferAccounts = ref([]);
+const transferForm = reactive({ to_account_id: null, remark: '' });
+async function openTransfer() {
+  if (!selUnsettled.value.length) return;
+  transferForm.to_account_id = null;
+  transferForm.remark = '';
+  transferVisible.value = true;
+  try {
+    const data = await http.get('/ar/accounts', { params: { status: 'active' } });
+    transferAccounts.value = (data.list || []).filter((a) => a.id !== acctDetail.value?.account?.id);
+  } catch (e) {
+    transferAccounts.value = [];
+  }
+}
+async function submitTransfer() {
+  if (!transferForm.to_account_id) return ElMessage.warning('请选择转入账户');
+  transferSaving.value = true;
+  try {
+    await http.post('/ar/entries/transfer', {
+      entry_ids: selUnsettled.value.map((r) => r.id),
+      to_account_id: transferForm.to_account_id,
+      remark: transferForm.remark,
+    });
+    ElMessage.success('已转账');
+    transferVisible.value = false;
+    await Promise.all([loadArAccounts(), loadAcctDetail(acctDetail.value.account.id)]);
+    store.loadStats();
+  } catch (e) {
+    /* 已提示 */
+  } finally {
+    transferSaving.value = false;
+  }
+}
+
 function openReceipt(entry) {
   receiptForm.entry_ids = [];
   if (entry) {
@@ -551,8 +673,10 @@ onMounted(() => {
 .report-card { margin-bottom: 16px; }
 
 .ar-hint { font-size: 12px; color: #868e96; }
-.entry-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.entry-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
 .entry-hint { font-size: 12px; color: #868e96; }
+.transfer-list { max-height: 140px; overflow: auto; width: 100%; }
+.transfer-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; line-height: 20px; }
 .alloc-chip {
   display: inline-block; margin: 2px 6px 2px 0; padding: 1px 6px;
   font-size: 12px; color: #495057; background: #f1f3f5; border-radius: 4px;

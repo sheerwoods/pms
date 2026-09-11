@@ -27,14 +27,13 @@
       <el-table-column label="时间" width="150">
         <template #default="{ row }">{{ row.created_at }}</template>
       </el-table-column>
-      <el-table-column label="类型" width="84">
+      <el-table-column prop="category" label="类别" min-width="120" />
+      <el-table-column label="房间" width="76" align="center">
         <template #default="{ row }">
-          <el-tag size="small" :type="kindTag(row)" effect="plain">{{ kindText(row) }}</el-tag>
+          <span v-if="row.room_unit_id">{{ row.unit_room_no || '待排房' }}</span>
+          <span v-else class="amt-zero">—</span>
         </template>
       </el-table-column>
-      <el-table-column prop="category" label="类别" width="92" />
-      <el-table-column prop="description" label="说明" min-width="130" />
-      <el-table-column prop="method" label="方式" width="82" />
       <el-table-column label="金额" width="112" align="right">
         <template #default="{ row }">
           <template v-if="row.item_type === 'info'"><span class="amt-zero">—</span></template>
@@ -51,7 +50,8 @@
       </el-table-column>
       <el-table-column label="操作" width="66" align="center">
         <template #default="{ row }">
-          <el-button v-if="row.item_type !== 'info'" link type="danger" size="small" @click="removeItem(row)">冲销</el-button>
+          <el-button v-if="row.item_type !== 'info' && !row.ar_locked" link type="danger" size="small" @click="removeItem(row)">冲销</el-button>
+          <span v-else-if="row.ar_locked" class="locked">已挂AR</span>
           <span v-else>-</span>
         </template>
       </el-table-column>
@@ -104,8 +104,10 @@
             <el-option v-for="c in categoryOptions" :key="c" :label="c" :value="c" />
           </el-select>
         </el-form-item>
-        <el-form-item label="说明">
-          <el-input v-model="addForm.description" placeholder="选填" />
+        <el-form-item v-if="addForm.item_type === 'extra_charge' && units.length" label="房间" required>
+          <el-select v-model="addForm.room_unit_id" placeholder="选择消费所属房间" style="width: 100%">
+            <el-option v-for="u in units" :key="u.id" :label="unitLabel(u)" :value="u.id" />
+          </el-select>
         </el-form-item>
         <el-form-item label="金额" required>
           <el-input-number v-model="addForm.amount" :min="0" :precision="2" :max="999999" :controls="false" style="width: 100%" />
@@ -134,7 +136,7 @@
         <el-form-item label="挂账消费">
           <div class="ar-picked">
             <div v-for="r in arRows" :key="r.id" class="ar-picked-row">
-              <span>{{ r.description || r.category || kindText(r) }}</span>
+              <span>{{ r.description || r.category || kindText(r) }}<em v-if="r.unit_room_no" class="ar-room">（{{ r.unit_room_no }}）</em></span>
               <b class="amt-out">−{{ fmtMoney(r.unsettled_amount) }}</b>
             </div>
           </div>
@@ -166,7 +168,8 @@
           <el-tag size="small" :type="s.kind === 'ar' ? 'danger' : 'success'" effect="plain">{{ s.kind === 'ar' ? '挂 AR' : '结账' }}</el-tag>
           <b>{{ fmtMoney(s.amount) }}</b>
           <span class="rec-time">{{ s.created_at }}｜营业日 {{ s.business_date }}</span>
-          <el-button link type="danger" size="small" class="rec-revoke" @click="revokeSettlements([s])">撤销</el-button>
+          <el-button v-if="s.kind !== 'ar'" link type="danger" size="small" class="rec-revoke" @click="revokeSettlements([s])">撤销</el-button>
+          <span v-else class="rec-locked">挂账请在 AR 账户处理</span>
         </div>
         <div v-for="a in s.allocations" :key="a.id" class="rec-line">
           <span class="rec-side" :class="a.side === 'charge' ? 'amt-out' : 'amt-in'">{{ a.side === 'charge' ? '消费' : '收款' }}</span>
@@ -185,7 +188,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import http from '../api';
 import { fmtMoney, RES_STATUS } from '../utils/format';
 import { dictOptions, nonArMethods } from '../utils/dict';
-import { moneyView, balanceView, itemKindOf, itemKindText, itemKindTag } from '../utils/money';
+import { moneyView, balanceView, itemKindOf, itemKindText } from '../utils/money';
 
 const props = defineProps({
   reservationId: { type: [Number, String], default: null },
@@ -209,25 +212,34 @@ const folio = ref(null);
 const tableRef = ref(null);
 const saving = ref(false);
 const addVisible = ref(false);
-const addForm = reactive({ item_type: 'extra_charge', category: '迷你吧', description: '', amount: 0, method: '现金', adjSign: 1 });
+const addForm = reactive({ item_type: 'extra_charge', category: '迷你吧', amount: 0, method: '现金', adjSign: 1, room_unit_id: null });
 
 const statusMeta = computed(() => (folio.value ? RES_STATUS[folio.value.reservation.status] : null));
 const summary = computed(() => folio.value?.summary || EMPTY_SUMMARY);
 const bal = computed(() => balanceView(summary.value.accountBalance));
 const settlements = computed(() => folio.value?.settlements || []);
 const unsettledTotal = computed(() => folio.value?.unsettled_charges?.total || 0);
+// 子单房间（多子单账单消费需选择房间）
+const units = computed(() => folio.value?.units || []);
+function unitLabel(u) {
+  const no = u.room_no || '待排房';
+  return u.type_name ? `${no}（${u.type_name}）` : no;
+}
 
 const mv = (n) => moneyView(n);
 const kindOf = (row) => itemKindOf(row);
 const kindText = (row) => itemKindText(kindOf(row));
-const kindTag = (row) => itemKindTag(kindOf(row));
 const rowClass = ({ row }) => (row.item_type === 'info' ? 'row-info' : '');
 const stMeta = (row) => SETTLE_STATUS[row.settle_status] || SETTLE_STATUS.open;
-const selectable = (row) => !!row.settle_side;
+// 已挂 AR 结清的明细在客账内不可操作（不可勾选、不可冲销、不可撤销）
+const selectable = (row) => !!row.settle_side && !row.ar_locked;
 function statusTip(row) {
-  if (row.settle_status === 'partial') return `已结 ¥${fmtMoney(row.settled_amount)}，未结 ¥${fmtMoney(row.unsettled_amount)}`;
   const s = (settleOf.value[row.id] || [])[0];
-  if (s) return `${s.kind === 'ar' ? '挂 AR' : '结账'}批次 #${s.id}｜${s.created_at}`;
+  if (row.settle_status === 'ar') {
+    return `已挂 AR${row.ar_amount ? ' ¥' + fmtMoney(row.ar_amount) : ''}${s?.kind === 'ar' ? '（批次 #' + s.id + '）' : ''}，客账内不可操作，请到「AR 账户」处理`;
+  }
+  if (row.settle_status === 'partial') return `已结 ¥${fmtMoney(row.settled_amount)}，未结 ¥${fmtMoney(row.unsettled_amount)}`;
+  if (s) return `结账批次 #${s.id}｜${s.created_at}`;
   return `未结 ¥${fmtMoney(row.unsettled_amount)}`;
 }
 
@@ -334,26 +346,30 @@ watch(
 function openAdd(item_type) {
   addForm.item_type = item_type;
   addForm.category = categoryOptions.value[0] || '';
-  addForm.description = '';
   addForm.amount = 0;
   addForm.method = '现金';
   addForm.adjSign = 1;
+  addForm.room_unit_id = item_type === 'extra_charge' ? (units.value[0]?.id ?? null) : null;
   addVisible.value = true;
 }
 
 async function submitAdd() {
   if (!addForm.amount || addForm.amount <= 0) return ElMessage.warning('请输入金额');
+  if (addForm.item_type === 'extra_charge' && units.value.length && !addForm.room_unit_id) {
+    return ElMessage.warning('请选择消费所属房间');
+  }
   saving.value = true;
   try {
     const amount = addForm.item_type === 'adj' ? addForm.amount * addForm.adjSign : addForm.amount;
-    await http.post('/finance/items', {
+    const payload = {
       reservation_id: props.reservationId,
       item_type: addForm.item_type,
       category: addForm.category,
-      description: addForm.description,
       amount,
       method: addForm.method,
-    });
+    };
+    if (addForm.item_type === 'extra_charge') payload.room_unit_id = addForm.room_unit_id;
+    await http.post('/finance/items', payload);
     ElMessage.success('已入账');
     addVisible.value = false;
     await load();
@@ -449,11 +465,14 @@ async function removeItem(row) {
 .ar-hint { font-size: 12px; color: #868e96; margin-top: -4px; }
 .ar-picked { max-height: 120px; overflow: auto; width: 100%; }
 .ar-picked-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; line-height: 20px; }
+.ar-picked-row .ar-room { font-style: normal; color: #868e96; }
 .rec { border: 1px solid #e9ecef; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
 .rec-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .rec-head b { font-size: 15px; }
 .rec-time { color: #868e96; font-size: 12px; }
 .rec-revoke { margin-left: auto; }
+.rec-locked { margin-left: auto; font-size: 12px; color: #868e96; }
+.locked { font-size: 12px; color: #868e96; }
 .rec-line { display: flex; gap: 8px; font-size: 12px; color: #495057; padding: 2px 0 0 6px; }
 .rec-side { width: 30px; }
 .rec-desc { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

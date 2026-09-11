@@ -64,6 +64,36 @@ function settleFolio(r, { payments = [], refund = null, use_deposit = true, depo
   }
 }
 
+// 整单结账退房事务（供「整单退房」与「续住」复用）：
+// 未到店子单按未到关闭 -> 在住子单置已退 -> 按实际离店日对账房费 -> 收款/退款/挂账结算 -> 订单已退 -> 住过的房间置脏
+// 返回结算后余额；须调用方置于事务中（可嵌套 withTx）
+function closeOrderTx(r, { payments = [], refund = null, use_deposit = true, deposit_refund_method = '现金', checkoutDate } = {}) {
+  const coDate = checkoutDate || today();
+  run("UPDATE reservation_rooms SET status='no_show' WHERE reservation_id=? AND status='pending'", r.id);
+
+  const checkedUnits = q("SELECT id FROM reservation_rooms WHERE reservation_id=? AND status='checked_in'", r.id);
+  for (const cu of checkedUnits) {
+    run("UPDATE reservation_rooms SET status='checked_out', actual_check_out=? WHERE id=?", coDate, cu.id);
+  }
+  // 按实际夜数调平各房型房费（房费归入对应房间）
+  syncRoomCharges(r.id, r.guest_id, occupiedRoomUnits(r, coDate));
+
+  // 结算：押金抵扣/退还 -> 收款 -> 找零 -> 挂账
+  assertNoOverAr(r.id);
+  settleFolio(r, { payments, refund, use_deposit, deposit_refund_method });
+  assertAllSettled(r.id);
+
+  run("UPDATE reservations SET status='checked_out', actual_check_out=? WHERE id=?", coDate, r.id);
+  // 置脏实际住过的房间（含本次退房与历史单间已退的房）；未入住即关闭的房不动
+  const seen = new Set();
+  for (const x of q("SELECT room_id FROM reservation_rooms WHERE reservation_id=? AND status='checked_out'", r.id)) {
+    if (x.room_id && !seen.has(x.room_id)) { seen.add(x.room_id); run("UPDATE rooms SET status='dirty' WHERE id=?", x.room_id); }
+  }
+  if (!seen.size && r.room_id) run("UPDATE rooms SET status='dirty' WHERE id=?", r.room_id);
+
+  return getBalance(r.id);
+}
+
 function getRoomNo(id) {
   if (!id) return '-';
   const r = get('SELECT room_no FROM rooms WHERE id=?', id);
@@ -234,6 +264,31 @@ function occupiedRoomUnits(r, defaultEnd = null) {
   for (const row of rows) {
     const end = isHourly ? null : (row.actual_check_out || endBase);
     const nights = isHourly ? 1 : Math.max(0, nightsBetween(start, end || start));
+    for (let i = 0; i < nights; i++) {
+      const d = addDays(start, i);
+      units.push({ date: d, amount: roomRate(r, row, d), roomUnitId: row.id });
+    }
+  }
+  return units;
+}
+
+// 「已发生（已完成夜晚）房费」权威集合：与夜审口径一致——在住间只计至营业日-1，已退间计至实际离店日。
+// 用于在住期间的房费对账（改价/提前离店），绝不提前计当夜及以后的房费。
+function elapsedRoomUnits(r) {
+  const isHourly = r.booking_type === '钟点房';
+  const start = (r.actual_check_in && String(r.actual_check_in).slice(0, 10)) || r.check_in_date;
+  const cutoff = currentBusinessDate(); // 已完成夜晚 < cutoff（即 <= 营业日-1）
+  const rows = q("SELECT * FROM reservation_rooms WHERE reservation_id=? AND status IN ('checked_in','checked_out') ORDER BY id", r.id);
+  const units = [];
+  for (const row of rows) {
+    if (isHourly) {
+      // 钟点房退房时结算 1 晚；在住期间不预提
+      if (!row.actual_check_out) continue;
+      units.push({ date: start, amount: roomRate(r, row, start), roomUnitId: row.id });
+      continue;
+    }
+    const end = row.actual_check_out || cutoff;
+    const nights = Math.max(0, nightsBetween(start, end));
     for (let i = 0; i < nights; i++) {
       const d = addDays(start, i);
       units.push({ date: d, amount: roomRate(r, row, d), roomUnitId: row.id });
@@ -479,10 +534,11 @@ router.put('/reservations/:id', wrap((req, res) => {
   // 按新 lines 同步子单行（增/减待入住子单、重映射 line_index），先于房费重算
   syncReservationUnits(r.id, lines);
 
-  // 在住（含部分入住，父单 reserved，只要仍有在住子单）按新日期/房型/间数同步房费（钟点房固定 1 晚）
+  // 在住（含部分入住，父单 reserved，只要仍有在住子单）按新日期/房型/间数对账「已完成夜晚」房费
+  // 只补/调已过夜次，不提前计当夜及以后；剩余夜次仍由夜审到点补计
   if (hasCheckedInUnit(r.id)) {
     const updated = { ...r, booking_type, check_in_date, check_out_date, lines: linesJson };
-    syncRoomCharges(r.id, r.guest_id, occupiedRoomUnits(updated, check_out_date));
+    syncRoomCharges(r.id, r.guest_id, elapsedRoomUnits(updated));
   }
   res.json({ ok: true });
 }));
@@ -520,6 +576,45 @@ router.put('/reservations/:id/rooms/:unitId/cohabitors', wrap((req, res) => {
     phone: String(c.guest_phone ?? c.phone ?? '').trim(),
   }));
   run('UPDATE reservation_rooms SET cohabitors=? WHERE id=?', JSON.stringify(clean), row.id);
+  res.json({ ok: true });
+}));
+
+// ============ 修改某个房间子单的房间信息（房价/离店日期/备注）——仅作用于当前房间，不回写父订单 ============
+router.put('/reservations/:id/rooms/:unitId/room-info', wrap((req, res) => {
+  const r = get('SELECT * FROM reservations WHERE id=?', req.params.id);
+  if (!r) throw new AppError('订单不存在', 404);
+  if (isTerminal(r.status)) throw new AppError('该状态的订单不可修改');
+  const row = get('SELECT * FROM reservation_rooms WHERE id=? AND reservation_id=?', req.params.unitId, r.id);
+  if (!row) throw new AppError('房间子单不存在', 404);
+  if (row.status !== 'checked_in') throw new AppError('仅可修改在住房间的房间信息');
+
+  const isHourly = r.booking_type === '钟点房';
+  const start = (r.actual_check_in && String(r.actual_check_in).slice(0, 10)) || r.check_in_date;
+  let checkOut = req.body.check_out_date || row.check_out_date || r.check_out_date;
+  if (isHourly) checkOut = start;
+  else if (checkOut <= start) throw new AppError('离店日期必须晚于入住日期');
+  const rate = req.body.rate != null ? Math.max(0, Number(req.body.rate) || 0) : (Number(row.rate) || 0);
+  const remark = req.body.remark != null ? String(req.body.remark) : (row.remark || '');
+
+  // 逐晚价覆盖：接受 {date:price} 或 [{date,price}]；仅保留住宿期内（钟点房仅当晚）的有效价
+  let rates = row.rates || '{}';
+  if (req.body.rates !== undefined) {
+    const src = Array.isArray(req.body.rates)
+      ? Object.fromEntries(req.body.rates.filter((x) => x && x.date).map((x) => [x.date, Number(x.price)]))
+      : (req.body.rates && typeof req.body.rates === 'object' ? req.body.rates : {});
+    const map = {};
+    for (const [d, p] of Object.entries(src)) {
+      const price = Number(p);
+      const inRange = isHourly ? d === start : (d >= start && d < checkOut);
+      if (inRange && Number.isFinite(price) && price >= 0) map[d] = price;
+    }
+    rates = JSON.stringify(map);
+  }
+
+  run('UPDATE reservation_rooms SET check_out_date=?, rate=?, rates=?, remark=? WHERE id=?', checkOut, rate, rates, remark, row.id);
+
+  // 仅对账「已完成夜晚」房费（改价后按新价重算已过夜次）；不提前计当夜及以后
+  syncRoomCharges(r.id, r.guest_id, elapsedRoomUnits(r));
   res.json({ ok: true });
 }));
 
@@ -664,8 +759,9 @@ router.post('/reservations/:id/rooms/:unitId/check-out', wrap((req, res) => {
     // 2) 共享账务账单记一条备注（该间离店）
     addFolioItem({ reservationId: r.id, guestId: r.guest_id, itemType: 'info', category: '退房', description: `房间${roomNo}退房 ${checkoutDate}` });
 
-    // 3) 整单房费重算：保留该间已住夜数 + 其余在住房间夜数
-    syncRoomCharges(r.id, r.guest_id, occupiedRoomUnits(r));
+    // 3) 仅对账「已完成夜晚」房费：本间计至实际离店日，其余在住间只保留已过夜次
+    //（不按预离日提前计当夜及以后，剩余夜次交由夜审到点补计）
+    syncRoomCharges(r.id, r.guest_id, elapsedRoomUnits(r));
 
     // 4) 统计剩余在住房间
     const remaining = get("SELECT COUNT(*) AS c FROM reservation_rooms WHERE reservation_id=? AND status='checked_in'", r.id).c;
@@ -703,32 +799,145 @@ router.post('/reservations/:id/check-out', wrap((req, res) => {
   const checkoutDate = actual_check_out || today();
 
   // 全程事务：任何一步失败（含挂账账户校验/过度挂账）都整体回滚，避免订单半退房
+  const final_balance = withTx(() => closeOrderTx(r, { payments, refund, use_deposit, deposit_refund_method, checkoutDate }));
+  res.json({ ok: true, final_balance });
+}));
+
+// ============ 续住：结账退房旧单 -> 按来源预订单/新建单续住当前房间与入住人 ============
+// body: { source_reservation_id?（空=新建续住单）, check_out_date, booking_type?, rates:[{date,price}], remark?,
+//         payments, refund, use_deposit, deposit_refund_method }
+// 口径：保留当前在住子单入住人（含同住人）；以当前在住房间为准覆盖新单房型/房间/日期；旧单手动结账退房
+router.post('/reservations/:id/rooms/:unitId/renew', wrap((req, res) => {
+  const r = get('SELECT * FROM reservations WHERE id=?', req.params.id);
+  if (!r) throw new AppError('订单不存在', 404);
+  if (isTerminal(r.status)) throw new AppError('该订单已结束，不可续住');
+  const unit = get('SELECT * FROM reservation_rooms WHERE id=? AND reservation_id=?', Number(req.params.unitId), r.id);
+  if (!unit) throw new AppError('在住房间不存在', 404);
+  if (unit.status !== 'checked_in') throw new AppError('仅可对在住房间办理续住');
+  if (!unit.room_id) throw new AppError('该房间尚未分配房号');
+  if (unitCounts(r.id).checked_in > 1) throw new AppError('该订单还有其他在住房间，请先逐间退房后再续住');
+
+  const room = get('SELECT * FROM rooms WHERE id=?', unit.room_id);
+  if (!room) throw new AppError('房间不存在', 404);
+
+  const ci = today();
+  // 续住前置条件：当前房间预离日必须为今日（离店日 = 今日）
+  const oldCo = String(unit.check_out_date || r.check_out_date || '').slice(0, 10);
+  if (oldCo !== ci) throw new AppError(`仅可对今日离店的房间办理续住（当前预离 ${oldCo || '未设置'}）`);
+  const occupant = {
+    name: unit.guest_name || r.guest_name || '',
+    idCard: unit.guest_id_card || '',
+    phone: unit.guest_phone || '',
+  };
+  const cohabitors = unit.cohabitors || '[]';
+
+  const srcId = req.body.source_reservation_id ? Number(req.body.source_reservation_id) : null;
+  if (srcId === Number(r.id)) throw new AppError('来源预订单不能是被续订单本身');
+  let src = null;
+  if (srcId) {
+    src = get('SELECT * FROM reservations WHERE id=?', srcId);
+    if (!src) throw new AppError('来源预订单不存在', 404);
+    if (src.status !== 'reserved') throw new AppError('来源预订单必须为「已预订」状态');
+    const sc = unitCounts(src.id);
+    if (sc.checked_in > 0 || sc.checked_out > 0) throw new AppError('来源预订单已有入住/退房记录，不可作为续住单');
+    if (unitInfos(src).length !== 1) throw new AppError('来源预订单需为单间订单，暂不支持多间续住');
+    // 续住前置条件：来源预订单入住日必须为今日（今日 = 续住单入住日）
+    if (String(src.check_in_date || '').slice(0, 10) !== ci) throw new AppError(`来源预订单的入住日期须为今日（该单入住 ${src.check_in_date || '-'}），方可续住`);
+  }
+
+  const { payments = [], refund = null, use_deposit = true, deposit_refund_method = '现金' } = req.body;
+
+  // 新单参数：
+  //  · 选用来源预订单 -> 完全沿用该预订单自身的房型/日期/房价（不可编辑），房间取当前在住房间
+  //  · 新建续住单   -> 房型取当前在住房间实际房型，日期/房价由入参决定
+  let nBookingType; let nCi; let nCo; let nNights; let nRoomTypeId;
+  let nLines; let nLinesJson; let nRatesTop; let nTotal; let nFirstRate;
+  if (src) {
+    nBookingType = src.booking_type || '全日房';
+    nCi = src.check_in_date;
+    nCo = src.check_out_date;
+    nNights = src.nights || (nBookingType === '钟点房' ? 1 : Math.max(1, nightsBetween(nCi, nCo)));
+    nLines = safeParseLines(src);
+    nLinesJson = JSON.stringify(nLines);
+    nRatesTop = src.rates || '{}';
+    nTotal = src.total_amount || 0;
+    nRoomTypeId = src.room_type_id || (nLines[0] && nLines[0].room_type_id) || room.type_id || unit.room_type_id || null;
+    nFirstRate = 0;
+  } else {
+    nBookingType = req.body.booking_type || '全日房';
+    const isHourly = nBookingType === '钟点房';
+    nCi = ci;
+    nCo = isHourly ? ci : (req.body.check_out_date || addDays(ci, 1));
+    if (!isHourly && nCo <= ci) throw new AppError('离店日期必须晚于今日');
+    nNights = isHourly ? 1 : Math.max(1, nightsBetween(ci, nCo));
+    nRoomTypeId = room.type_id || unit.room_type_id || null;
+    const dates = [];
+    for (let i = 0; i < nNights; i++) dates.push(addDays(ci, i));
+    const provided = Array.isArray(req.body.rates) ? req.body.rates : [];
+    const fallbackRate = round2(roomRate(r, unit, ci));
+    const rateMap = {};
+    for (const d of dates) {
+      const hit = provided.find((x) => x && String(x.date) === d);
+      rateMap[d] = round2(hit && Number(hit.price) > 0 ? Number(hit.price) : fallbackRate);
+    }
+    if (!dates.length || !Object.values(rateMap).some((p) => p > 0)) throw new AppError('请设置续住房价');
+    nFirstRate = rateMap[dates[0]];
+    nLines = [{ room_type_id: nRoomTypeId, rooms: 1, rate: nFirstRate, rates: JSON.stringify(rateMap) }];
+    nLinesJson = JSON.stringify(nLines);
+    nRatesTop = JSON.stringify(rateMap);
+    nTotal = round2(Object.values(rateMap).reduce((s, p) => s + p, 0));
+  }
+
   const out = withTx(() => {
-    // 未到店的待入住子单按「未到」关闭，避免残留幽灵预抵
-    run("UPDATE reservation_rooms SET status='no_show' WHERE reservation_id=? AND status='pending'", r.id);
+    // 1) 结账退房旧单（整单，手动收款口径）
+    closeOrderTx(r, { payments, refund, use_deposit, deposit_refund_method, checkoutDate: ci });
 
-    // 所有在住单元置为已退并写各自离店日
-    const checkedUnits = q("SELECT id FROM reservation_rooms WHERE reservation_id=? AND status='checked_in'", r.id);
-    for (const cu of checkedUnits) {
-      run("UPDATE reservation_rooms SET status='checked_out', actual_check_out=? WHERE id=?", checkoutDate, cu.id);
+    // 2) 释放后确认原房间可用（排除来源预订单自身）
+    if (!isRoomAvailable(unit.room_id, src ? src.id : null)) throw new AppError('原房间不可用，无法续住');
+
+    // 3) 落地新单
+    let targetId; let targetNo;
+    if (src) {
+      // 复用来源预订单：保留其房型/日期/房价/预定人；仅房间指向当前在住房间、子单入住人改为当前在住人
+      run(
+        `UPDATE reservations SET room_id=?, renew_from_order_no=?, status='checked_in', actual_check_in=?, actual_check_out=NULL
+         WHERE id=?`,
+        unit.room_id, r.order_no, now(), src.id
+      );
+      const row = get('SELECT * FROM reservation_rooms WHERE reservation_id=? ORDER BY id LIMIT 1', src.id);
+      if (!row) throw new AppError('来源预订单房间单元缺失');
+      run(
+        `UPDATE reservation_rooms SET status='checked_in', room_id=?, guest_name=?, guest_id_card=?, guest_phone=?,
+           cohabitors=?, rate=0, rates='{}', check_out_date=NULL, actual_check_out=NULL WHERE id=?`,
+        unit.room_id, occupant.name, occupant.idCard, occupant.phone, cohabitors, row.id
+      );
+      targetId = src.id;
+      targetNo = src.order_no;
+    } else {
+      // 新建续住单：订单头=当前入住人；来源渠道沿用旧单，续住来源记旧单号；子单房价留空走线路价
+      const order_no = genOrderNo();
+      const rid = Number(run(
+        `INSERT INTO reservations
+          (order_no, guest_id, guest_name, guest_phone, guest_id_card, room_type_id, room_id,
+           check_in_date, check_out_date, nights, adults, rate, rooms, total_amount,
+           status, booking_type, source, source_order_no, renew_from_order_no, remark, rates, lines, actual_check_in)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        order_no, r.guest_id, occupant.name, occupant.phone, occupant.idCard, nRoomTypeId, unit.room_id,
+        nCi, nCo, nNights, r.adults || 1, nFirstRate, 1, nTotal,
+        'checked_in', nBookingType, r.source || '散客', r.source_order_no || '', r.order_no,
+        req.body.remark != null ? String(req.body.remark) : '', nRatesTop, nLinesJson, now()
+      ).lastInsertRowid);
+      run(
+        `INSERT INTO reservation_rooms
+          (reservation_id, room_id, room_type_id, line_index, guest_name, guest_id_card, guest_phone, cohabitors, rate, rates, status)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        rid, unit.room_id, nRoomTypeId, 0, occupant.name, occupant.idCard, occupant.phone, cohabitors, 0, '{}', 'checked_in'
+      );
+      targetId = rid;
+      targetNo = order_no;
     }
-    // 按实际夜数(或固定1晚)调平各房型房费（房费归入对应房间）
-    syncRoomCharges(r.id, r.guest_id, occupiedRoomUnits(r, checkoutDate));
 
-    // 结算：押金抵扣/退还 -> 收款 -> 找零 -> 挂账
-    assertNoOverAr(r.id);
-    settleFolio(r, { payments, refund, use_deposit, deposit_refund_method });
-    assertAllSettled(r.id);
-
-    run("UPDATE reservations SET status='checked_out', actual_check_out=? WHERE id=?", checkoutDate, r.id);
-    // 置脏实际住过的房间（含本次退房与历史单间已退的房）；未入住即关闭的房不动
-    const seen = new Set();
-    for (const x of q("SELECT room_id FROM reservation_rooms WHERE reservation_id=? AND status='checked_out'", r.id)) {
-      if (x.room_id && !seen.has(x.room_id)) { seen.add(x.room_id); run("UPDATE rooms SET status='dirty' WHERE id=?", x.room_id); }
-    }
-    if (!seen.size && r.room_id) run("UPDATE rooms SET status='dirty' WHERE id=?", r.room_id);
-
-    return { ok: true, final_balance: getBalance(r.id) };
+    return { ok: true, order_id: targetId, order_no: targetNo, final_balance: getBalance(r.id) };
   });
   res.json(out);
 }));

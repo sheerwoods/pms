@@ -52,6 +52,7 @@ function itemKind(item) {
 // ---- 客账汇总 ----
 // charges=房费+杂费；payments=实收；refunds=退款；cityLedger=挂账应收；
 // depositBalance=押金余额；receivable=应收(欠款)；accountBalance=账户余额(收款−消费)
+// 消费行可携带 ar_amount（已挂 AR 部分）：仍计收入，但不再计入客人应收
 function folioSummary(items) {
   const s = {
     roomCharge: 0, extraCharge: 0, adj: 0, charges: 0,
@@ -61,10 +62,11 @@ function folioSummary(items) {
   };
   for (const it of items || []) {
     const amt = Number(it.amount) || 0;
+    const ar = Number(it.ar_amount) || 0;
     switch (itemKind(it)) {
-      case 'room_charge': s.roomCharge += amt; s.receivable += amt; break;
-      case 'extra_charge': s.extraCharge += amt; s.receivable += amt; break;
-      case 'adj': s.adj += amt; s.receivable += amt; break;
+      case 'room_charge': s.roomCharge += amt; s.receivable += amt - ar; s.cityLedger += ar; break;
+      case 'extra_charge': s.extraCharge += amt; s.receivable += amt - ar; s.cityLedger += ar; break;
+      case 'adj': s.adj += amt; s.receivable += amt - ar; s.cityLedger += ar; break;
       case 'payment': s.payments += -amt; s.receivable += amt; break;
       case 'refund': s.refunds += amt; s.receivable += amt; break;
       case 'city_ledger': s.cityLedger += -amt; s.receivable += amt; break;

@@ -85,26 +85,19 @@
                 <div class="od-item"><span class="k">房型</span><span class="v">{{ roomTypeName }}</span></div>
                 <div class="od-item"><span class="k">房号</span><span class="v no">{{ roomText }}</span></div>
                 <div class="od-item"><span class="k">入住时间</span><span class="v">{{ checkInText }}</span></div>
-                <div class="od-item">
-                  <span class="k">离店时间</span>
-                  <el-date-picker v-if="roomEditing" v-model="roomEditForm.check_out_date" type="date" value-format="YYYY-MM-DD" size="small" style="width: 150px" :disabled="detail.booking_type === '钟点房'" />
-                  <span v-else class="v">{{ detail.check_out_date }} 12:00:00</span>
-                </div>
-                <div class="od-item"><span class="k">天数</span><span class="v">{{ nightsText }}</span></div>
+                <div class="od-item"><span class="k">离店时间</span><span class="v">{{ unitCheckOutDate }} 12:00:00</span></div>
+                <div class="od-item"><span class="k">天数</span><span class="v">{{ unitNightsText }}</span></div>
                 <div class="od-item"><span class="k">房价类型</span><span class="v">{{ detail.booking_type || '全日房' }}</span></div>
                 <div class="od-item"><span class="k">来源</span><span class="v">{{ detail.source || '-' }}</span></div>
                 <div class="od-item"><span class="k">来源单号</span><span class="v">{{ detail.source_order_no || '-' }}</span></div>
-                <div class="od-item">
-                  <span class="k">订单房价</span>
-                  <el-input-number v-if="roomEditing" v-model="roomEditForm.rate" :min="0" :precision="2" :controls="false" size="small" style="width: 110px" />
-                  <span v-else class="v rate">{{ fmtMoney(detail.rate) }}</span>
-                </div>
+                <div class="od-item"><span class="k">续住来源</span><span class="v">{{ detail.renew_from_order_no || '-' }}</span></div>
+                <div class="od-item"><span class="k">房间房价</span><span class="v rate">{{ fmtMoney(unitActualRate) }}</span></div>
                 <div class="od-item"><span class="k">订单金额</span><span class="v">{{ fmtMoney(detail.total_amount) }}</span></div>
                 <div class="od-item"><span class="k">订单号</span><span class="v">{{ detail.order_no }}</span></div>
                 <div class="od-item">
                   <span class="k">备注</span>
                   <el-input v-if="roomEditing" v-model="roomEditForm.remark" size="small" type="textarea" :rows="1" placeholder="备注" style="width: 200px" />
-                  <span v-else class="v note">{{ detail.remark || '-' }}</span>
+                  <span v-else class="v note">{{ unitRemark || '-' }}</span>
                 </div>
               </div>
               <div class="od-row-btns">
@@ -113,7 +106,7 @@
                   <el-button size="small" @click="cancelRoomEdit">取消</el-button>
                 </template>
                 <template v-else>
-                  <el-button v-if="curRoom.status === 'checked_in'" size="small" @click="startRoomEdit">房间信息修改</el-button>
+                  <el-button v-if="curRoom.status === 'checked_in'" size="small" @click="startRoomEdit">修改备注</el-button>
                   <el-button v-if="curRoom.status !== 'checked_out'" size="small" @click="openEdit">预定信息</el-button>
                 </template>
               </div>
@@ -224,12 +217,13 @@
                 <div class="od-item"><span class="k">入住类型</span><span class="v">{{ detail.booking_type || '全日房' }}</span></div>
                 <div class="od-item"><span class="k">实际入住</span><span class="v">{{ checkInText }}</span></div>
                 <div class="od-item"><span class="k">实际离店</span><span class="v">{{ actualCheckOutText }}</span></div>
-                <div class="od-item"><span class="k">首日房价</span><span class="v rate">{{ fmtMoney(curUnitRate) }}</span></div>
+                <div class="od-item"><span class="k">首日房价</span><span class="v rate">{{ fmtMoney(unitActualRate) }}</span></div>
                 <div class="od-item"><span class="k">总消费</span><span class="v amt-out">−{{ fmtMoney(detail.total_consume) }}</span></div>
                 <div class="od-item"><span class="k">账户余额</span><span class="v" :class="orderBal.cls">{{ orderBal.sign }}{{ orderBal.text }}（{{ orderBal.label }}）</span></div>
                 <div class="od-item"><span class="k">订单号</span><span class="v">{{ detail.order_no }}</span></div>
                 <div class="od-item"><span class="k">来源</span><span class="v">{{ detail.source || '-' }}</span></div>
                 <div class="od-item"><span class="k">来源单号</span><span class="v">{{ detail.source_order_no || '-' }}</span></div>
+                <div class="od-item"><span class="k">续住来源</span><span class="v">{{ detail.renew_from_order_no || '-' }}</span></div>
                 <div class="od-item"><span class="k">备注</span><span class="v note">{{ detail.remark || '-' }}</span></div>
               </div>
             </div>
@@ -249,7 +243,7 @@
             <template v-if="curRoom.status === 'checked_in'">
               <el-button type="primary" plain @click="openPriceModify">价格修改</el-button>
               <el-button type="primary" plain @click="openChangeRoom">换房升降</el-button>
-              <el-button type="primary" plain @click="openEdit">续住</el-button>
+              <el-button type="primary" plain :disabled="unitCheckOutDate !== today" :title="unitCheckOutDate !== today ? '仅可对今日离店的房间续住' : ''" @click="openRenew">续住</el-button>
               <el-button type="primary" plain @click="doEarlyCheckout">结账退房</el-button>
             </template>
             <template v-else-if="curRoom.status === 'pending'">
@@ -266,7 +260,7 @@
 
         <!-- 账单 -->
         <el-tab-pane label="账单" name="bill">
-          <FolioPanel :reservation-id="reservationId" @changed="load" />
+          <FolioPanel :reservation-id="reservationId" @changed="onSaved" />
         </el-tab-pane>
 
         <!-- 日志 -->
@@ -291,7 +285,8 @@
       <ChangeRoomDialog v-model:visible="changeRoomVisible" :reservation="detail" :unit-id="curRoom.id" @saved="onSaved" />
       <RoomAssignDialog v-model:visible="assignVisible" :reservation="detail" @saved="onSaved" />
       <FolioDialog v-model:visible="folioVisible" :reservation-id="reservationId" @changed="onSaved" />
-      <ModifyPriceDialog v-model:visible="priceVisible" :reservation="detail" @saved="onSaved" />
+      <ModifyPriceDialog v-model:visible="priceVisible" :reservation="detail" :unit="curRoom" @saved="onSaved" />
+      <RenewDialog v-model:visible="renewVisible" :reservation-id="reservationId" :unit-id="curRoom.id" @saved="onSaved" />
     </div>
   </el-dialog>
 </template>
@@ -311,6 +306,7 @@ import RoomAssignDialog from './RoomAssignDialog.vue';
 import FolioDialog from './FolioDialog.vue';
 import FolioPanel from './FolioPanel.vue';
 import ModifyPriceDialog from './ModifyPriceDialog.vue';
+import RenewDialog from './RenewDialog.vue';
 
 const props = defineProps({
   visible: Boolean,
@@ -321,6 +317,7 @@ const props = defineProps({
 const emit = defineEmits(['update:visible', 'changed']);
 
 const tab = ref('guest');
+const today = fmtDate();
 const detail = ref(null);
 const roomTypes = ref([]);
 
@@ -331,6 +328,7 @@ const changeRoomVisible = ref(false);
 const assignVisible = ref(false);
 const folioVisible = ref(false);
 const priceVisible = ref(false);
+const renewVisible = ref(false);
 
 // 修改客人：详情页内联编辑
 const guestEditing = ref(false);
@@ -342,10 +340,10 @@ const cohabEditing = ref(false);
 const savingCohab = ref(false);
 const cohabForm = reactive({ name: '', id_card: '', phone: '' });
 
-// 房间信息修改：详情页内联编辑（离店日期/房价/备注）
+// 房间备注修改：详情页内联编辑（仅本间备注）
 const roomEditing = ref(false);
 const savingRoom = ref(false);
-const roomEditForm = reactive({ check_out_date: '', rate: 0, remark: '' });
+const roomEditForm = reactive({ remark: '' });
 
 const statusMeta = computed(() => {
   const d = detail.value;
@@ -380,8 +378,35 @@ const roomTypeName = computed(() => {
 const roomStatusText = (s) => ({ checked_in: '在住', checked_out: '已退', pending: '待入住', reserved: '待入住', cancelled: '已取消', no_show: '未到' }[s] || '-');
 // 终态视图：该子单实际离店（回退到订单实际离店/预离）
 const actualCheckOutText = computed(() => curRoom.value.actual_check_out || detail.value?.actual_check_out || detail.value?.check_out_date || '-');
-// 终态视图：该子单房价（回退到订单房价）
-const curUnitRate = computed(() => Number(curRoom.value.rate) || Number(detail.value?.rate) || 0);
+
+// ---------- 当前子单口径（在住信息卡展示/编辑均以选中子单为准，不回写父订单） ----------
+const unitStartDate = computed(() => (detail.value?.actual_check_in ? String(detail.value.actual_check_in).slice(0, 10) : detail.value?.check_in_date) || '');
+// 该子单实际房价：优先本间入住覆盖价，否则按本间所在线路价表取当晚价，再回退线路价
+const unitActualRate = computed(() => {
+  const r = detail.value;
+  const unit = curRoom.value;
+  if (!r || !unit) return 0;
+  const d = unitStartDate.value;
+  const unitMap = parseRatesMap(unit.rates);
+  if (unitMap[d] != null) return Number(unitMap[d]);
+  if (Number(unit.rate) > 0) return Number(unit.rate);
+  const lines = safeLines(r);
+  const ln = lines[unit.line_index ?? 0] || lines[0] || {};
+  const map = parseRatesMap(ln.rates);
+  if (map[d] != null) return Number(map[d]);
+  return Number(ln.rate) || Number(r.rate) || 0;
+});
+const unitCheckOutDate = computed(() => curRoom.value?.check_out_date || detail.value?.check_out_date || '');
+const unitNights = computed(() => {
+  if (!detail.value) return 0;
+  if (detail.value.booking_type === '钟点房') return 1;
+  return Math.max(0, nightsBetween(unitStartDate.value, unitCheckOutDate.value));
+});
+const unitNightsText = computed(() => (detail.value?.booking_type === '钟点房' ? '1（3小时）' : `${unitNights.value} 晚`));
+const unitRemark = computed(() => {
+  const r = curRoom.value?.remark;
+  return (r != null && r !== '') ? r : (detail.value?.remark || '');
+});
 // 账户余额：>0 应退客人（红），<0 客人欠款（绿）
 const orderBal = computed(() => balanceView(detail.value?.account_balance ?? -(detail.value?.balance || 0)));
 const roomStatus = computed(() => roomStatusText(curRoom.value.status || detail.value?.status));
@@ -485,7 +510,14 @@ const logs = computed(() => {
 function openEdit() { editVisible.value = true; }
 function openCheckin() { checkinVisible.value = true; }
 function openAssign() { assignVisible.value = true; }
-function openPriceModify() { priceVisible.value = true; }
+function openPriceModify() {
+  if (curRoom.value?.status !== 'checked_in') return ElMessage.warning('仅可修改在住房间');
+  priceVisible.value = true;
+}
+function openRenew() {
+  if (curRoom.value?.status !== 'checked_in') return ElMessage.warning('仅可对在住房间办理续住');
+  renewVisible.value = true;
+}
 
 // 修改客人：内联编辑（不弹窗）
 function startGuestEdit() {
@@ -511,7 +543,7 @@ async function saveGuest() {
       guest_id_card: (guestForm.guest_id_card || '').trim().toUpperCase(),
     });
     ElMessage.success('客人信息已修改');
-    await load();
+    await onSaved();
     guestEditing.value = false;
   } catch (e) { /* 拦截器已提示 */ } finally { savingGuest.value = false; }
 }
@@ -535,63 +567,26 @@ async function saveCohab() {
   try {
     await http.put(`/reservations/${detail.value.id}/rooms/${curRoom.value.id}/cohabitors`, { cohabitors: next });
     ElMessage.success('已新增同住人');
-    await load();
+    await onSaved();
     cohabEditing.value = false;
   } catch (e) { /* 拦截器已提示 */ } finally { savingCohab.value = false; }
 }
 
-// 房间信息修改：内联编辑（离店日期/房价/备注，保留原房型间数）
+// 房间备注修改：内联编辑（仅本间备注）——仅作用于当前房间子单，不回写父订单
 function startRoomEdit() {
-  roomEditForm.check_out_date = detail.value?.check_out_date || '';
-  roomEditForm.rate = Number(detail.value?.rate) || 0;
-  roomEditForm.remark = detail.value?.remark || '';
+  roomEditForm.remark = unitRemark.value;
   roomEditing.value = true;
 }
 function cancelRoomEdit() { roomEditing.value = false; }
 async function saveRoom() {
-  if (!detail.value) return;
-  const ci = detail.value.check_in_date;
-  const co = roomEditForm.check_out_date;
-  const isHourly = detail.value.booking_type === '钟点房';
-  if (!co) return ElMessage.warning('请选择离店日期');
-  if (!isHourly && co <= ci) return ElMessage.warning('离店日期必须晚于入住日期');
-  const rate = Number(roomEditForm.rate) || 0;
-  const n = isHourly ? 1 : Math.max(1, nightsBetween(ci, co));
-
-  let raw = [];
-  try { raw = JSON.parse(detail.value.lines || '[]'); } catch { /* */ }
-  if (!Array.isArray(raw) || !raw.length) {
-    raw = [{ room_type_id: detail.value.room_type_id || null, rooms: detail.value.rooms || 1, rate, rates: [] }];
-  }
-  // 统一各房型 lines 的 rates 为服务器期望的 [{date, price}] 数组
-  const lines = raw.map((ln) => {
-    let map = {};
-    if (typeof ln.rates === 'string') { try { map = JSON.parse(ln.rates) || {}; } catch { /* */ } }
-    else if (Array.isArray(ln.rates)) { ln.rates.forEach((x) => { map[x.date] = x.price; }); }
-    else if (ln.rates && typeof ln.rates === 'object') { map = ln.rates; }
-    const rates = [];
-    for (let i = 0; i < n; i++) {
-      const d = addDays(ci, i);
-      rates.push({ date: d, price: map[d] != null ? Number(map[d]) : (Number(ln.rate) || 0) });
-    }
-    return { room_type_id: ln.room_type_id || null, rooms: ln.rooms || 1, rate: Number(ln.rate) || 0, rates };
-  });
-  // 首行房价（订单房价）改为新值
-  lines[0].rate = rate;
-  lines[0].rates = lines[0].rates.map((x) => ({ ...x, price: rate }));
-
+  if (!detail.value || !curRoom.value?.id) return ElMessage.warning('请先选择在住房间');
   savingRoom.value = true;
   try {
-    await http.put(`/reservations/${detail.value.id}`, {
-      check_in_date: ci,
-      check_out_date: co,
-      booking_type: detail.value.booking_type,
+    await http.put(`/reservations/${detail.value.id}/rooms/${curRoom.value.id}/room-info`, {
       remark: roomEditForm.remark,
-      rate,
-      lines,
     });
-    ElMessage.success('房间信息已修改');
-    await load();
+    ElMessage.success('房间备注已修改');
+    await onSaved();
     roomEditing.value = false;
   } catch (e) { /* 拦截器已提示 */ } finally { savingRoom.value = false; }
 }
@@ -605,7 +600,7 @@ async function doCancel() {
   } catch (e) { return; }
   await http.post(`/reservations/${detail.value.id}/cancel`);
   ElMessage.success('预定已取消');
-  await load();
+  await onSaved();
 }
 async function doRestore() {
   if (!detail.value) return;
@@ -614,7 +609,7 @@ async function doRestore() {
   } catch (e) { return; }
   await http.post(`/reservations/${detail.value.id}/restore`);
   ElMessage.success('已恢复预定');
-  await load();
+  await onSaved();
 }
 
 // 结账退房：仅剩一间在住且无待入住子单时整单结算；否则单间退房，其余子单继续
@@ -630,7 +625,7 @@ async function doEarlyCheckout() {
   } catch (e) { return; }
   await http.post(`/reservations/${detail.value.id}/rooms/${target.id}/check-out`, { actual_check_out: fmtDate() });
   ElMessage.success('该房间已退房');
-  await load();
+  await onSaved();
 }
 
 async function load() {
@@ -648,10 +643,14 @@ async function load() {
   const len = occupants.value.length;
   if (activeGuestIdx.value > 0 && activeGuestIdx.value >= len) activeGuestIdx.value = Math.max(0, len - 1);
 }
-async function onSaved() { await load(); }
+// 任何变更（含子对话框：入住/退房/续住/换房/改价/排房/预定信息）后：
+// 重载本弹窗详情并向上抛 changed，让房态图/订单列表等外层同步刷新
+async function onSaved() { await load(); emit('changed'); }
 
 watch(() => props.visible, (v) => { if (v) load(); });
-function reset() { detail.value = null; tab.value = 'guest'; checkinVisible.value = false; assignVisible.value = false; guestEditing.value = false; cohabEditing.value = false; roomEditing.value = false; priceVisible.value = false; }
+// 切换房间子单时退出房间信息修改状态，避免把上一间的编辑误存到另一间
+watch(activeUnitId, () => { roomEditing.value = false; });
+function reset() { detail.value = null; tab.value = 'guest'; checkinVisible.value = false; assignVisible.value = false; guestEditing.value = false; cohabEditing.value = false; roomEditing.value = false; priceVisible.value = false; renewVisible.value = false; }
 </script>
 
 <style scoped>

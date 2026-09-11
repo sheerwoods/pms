@@ -76,11 +76,12 @@ router.delete('/rooms/:id', wrap((req, res) => {
   res.json({ ok: true });
 }));
 
-// 客房状态：clean / dirty / ooo
+// 客房状态：clean / dirty / ooo（置维修可同时写入备注）
 router.put('/rooms/:id/status', wrap((req, res) => {
-  const { status } = req.body;
+  const { status, remark } = req.body;
   if (!['clean', 'dirty', 'ooo'].includes(status)) throw new AppError('无效的客房状态');
-  run('UPDATE rooms SET status=? WHERE id=?', status, req.params.id);
+  if (remark != null) run('UPDATE rooms SET status=?, remark=? WHERE id=?', status, String(remark), req.params.id);
+  else run('UPDATE rooms SET status=? WHERE id=?', status, req.params.id);
   res.json({ ok: true });
 }));
 
@@ -92,13 +93,19 @@ router.get('/room-status', wrap((req, res) => {
                    ORDER BY r.floor, r.room_no`);
   // 按每间状态驱动（分批入住）：rr.status=checked_in → 占；pending 且已分配房 → 预抵
   // 终态父单（已取消/未到/已退）不出现在房态图上
+  // unit_guest_name / unit_cohabitors：该间实际入住人与同住人，供房态方块显示入住人
   const inHouse = q(
-    `SELECT r.*, rr.room_id AS assigned_room_id, rr.id AS unit_id, rr.status AS unit_status FROM reservations r
+    `SELECT r.*, rr.room_id AS assigned_room_id, rr.id AS unit_id, rr.status AS unit_status,
+            rr.guest_name AS unit_guest_name, rr.cohabitors AS unit_cohabitors,
+            rr.check_out_date AS unit_check_out_date
+     FROM reservations r
      JOIN reservation_rooms rr ON rr.reservation_id=r.id
      WHERE rr.status='checked_in' AND rr.room_id IS NOT NULL AND r.status NOT IN ('cancelled','no_show','checked_out')`
   );
   const expected = q(
-    `SELECT r.*, rr.room_id AS assigned_room_id, rr.id AS unit_id, rr.status AS unit_status FROM reservations r
+    `SELECT r.*, rr.room_id AS assigned_room_id, rr.id AS unit_id, rr.status AS unit_status,
+            rr.guest_name AS unit_guest_name, rr.cohabitors AS unit_cohabitors
+     FROM reservations r
      JOIN reservation_rooms rr ON rr.reservation_id=r.id
      WHERE rr.status='pending' AND rr.room_id IS NOT NULL AND r.check_in_date <= ? AND r.check_out_date > ?
        AND r.status NOT IN ('cancelled','no_show','checked_out')`,
@@ -152,7 +159,8 @@ router.get('/room-status', wrap((req, res) => {
       const stay = byRoomIn[room.id];
       item.reservation = stay;
       item.balance = getBalance(stay.id);
-      item.eff_status = stay.check_out_date === date ? 'due_out' : (room.status === 'clean' ? 'occupied_clean' : 'occupied_dirty');
+      const stayOut = stay.unit_check_out_date || stay.check_out_date;
+      item.eff_status = stayOut === date ? 'due_out' : (room.status === 'clean' ? 'occupied_clean' : 'occupied_dirty');
     } else if (byRoomExp[room.id]) {
       item.reservation = byRoomExp[room.id];
       item.eff_status = 'expected';

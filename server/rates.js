@@ -15,9 +15,25 @@ function safeParseLines(r) {
   return [{ room_type_id: r.room_type_id || null, rooms: r.rooms || 1, rate: r.rate || 0, rates: r.rates || '{}' }];
 }
 
-// 某间房在某晚的房价：优先该间房入住时确认的覆盖价（row.rate>0），否则用该行线路价表，再回退线路价
-// `r` = 订单（需含 lines），`row` = reservation_rooms 行（需含 rate / line_index）
+// 解析某一子单的「逐晚房价覆盖」：rates 可能是对象、JSON 字符串或 [{date,price}] 数组
+function parseRowRates(row) {
+  const v = row && row.rates;
+  if (v == null) return {};
+  if (Array.isArray(v)) {
+    const m = {};
+    v.forEach((x) => { if (x && x.date) m[x.date] = Number(x.price) || 0; });
+    return m;
+  }
+  if (typeof v === 'object') return v;
+  try { return JSON.parse(v) || {}; } catch { return {}; }
+}
+
+// 某间房在某晚的房价：优先该间房逐晚覆盖价（row.rates[date]），其次该间房入住确认的单值覆盖价
+// （row.rate>0），否则用该行线路价表，再回退线路价
+// `r` = 订单（需含 lines），`row` = reservation_rooms 行（需含 rates / rate / line_index）
 function roomRate(r, row, date) {
+  const unitRates = parseRowRates(row);
+  if (unitRates[date] != null) return Number(unitRates[date]);
   if (row.rate && Number(row.rate) > 0) return Number(row.rate);
   const lines = safeParseLines(r);
   const ln = lines[row.line_index] || lines[0] || {};
@@ -26,4 +42,4 @@ function roomRate(r, row, date) {
   return Number(ln.rate) || 0;
 }
 
-module.exports = { parseRates, safeParseLines, roomRate };
+module.exports = { parseRates, parseRowRates, safeParseLines, roomRate };

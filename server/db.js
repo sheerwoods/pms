@@ -63,6 +63,7 @@ function initSchema() {
       lines TEXT DEFAULT '[]',                  -- 多预定房型 JSON [{room_type_id, rooms, rate, rates}]
       source TEXT DEFAULT '散客',
       source_order_no TEXT DEFAULT '',
+      renew_from_order_no TEXT DEFAULT '',   -- 续住：被续旧单的单号（溯源）
       remark TEXT DEFAULT '',
       actual_check_in TEXT,
       actual_check_out TEXT,
@@ -95,6 +96,7 @@ function initSchema() {
       settled_method TEXT DEFAULT '',
       remark TEXT DEFAULT '',
       business_date TEXT,
+      transferred_at TEXT,                     -- AR 账户间转账时间（最近一次转出）
       created_at TEXT DEFAULT (datetime('now','localtime'))
     );
     CREATE TABLE IF NOT EXISTS ar_accounts (
@@ -152,6 +154,9 @@ function initSchema() {
       guest_phone TEXT DEFAULT '',
       cohabitors TEXT DEFAULT '[]',
       rate REAL NOT NULL DEFAULT 0,         -- 该间房入住房价覆盖（0=用线路价）
+      rates TEXT DEFAULT '{}',              -- 该间房逐晚房价覆盖 {date:price}（优先于 rate）
+      check_out_date TEXT,                  -- 该间房预离日（留空=沿用订单离店日）
+      remark TEXT DEFAULT '',               -- 该间房备注
       actual_check_out TEXT,                -- 该间房实际离店日
       status TEXT NOT NULL DEFAULT 'pending',  -- pending / checked_in / checked_out
       created_at TEXT DEFAULT (datetime('now','localtime'))
@@ -196,12 +201,16 @@ function initSchema() {
   if (!resCols.includes('rates')) run("ALTER TABLE reservations ADD COLUMN rates TEXT DEFAULT '{}'");
   if (!resCols.includes('lines')) run("ALTER TABLE reservations ADD COLUMN lines TEXT DEFAULT '[]'");
   if (!resCols.includes('guest_id_card')) run("ALTER TABLE reservations ADD COLUMN guest_id_card TEXT DEFAULT ''");
+  if (!resCols.includes('renew_from_order_no')) run("ALTER TABLE reservations ADD COLUMN renew_from_order_no TEXT DEFAULT ''");
 
   // residence_rooms 状态列（分批入住）
   const rrCols = q('PRAGMA table_info(reservation_rooms)').map((c) => c.name);
   if (!rrCols.includes('status')) run("ALTER TABLE reservation_rooms ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'");
   if (!rrCols.includes('rate')) run('ALTER TABLE reservation_rooms ADD COLUMN rate REAL NOT NULL DEFAULT 0');
+  if (!rrCols.includes('rates')) run("ALTER TABLE reservation_rooms ADD COLUMN rates TEXT DEFAULT '{}'");
   if (!rrCols.includes('actual_check_out')) run('ALTER TABLE reservation_rooms ADD COLUMN actual_check_out TEXT');
+  if (!rrCols.includes('check_out_date')) run('ALTER TABLE reservation_rooms ADD COLUMN check_out_date TEXT');
+  if (!rrCols.includes('remark')) run("ALTER TABLE reservation_rooms ADD COLUMN remark TEXT DEFAULT ''");
 
   // folio_items 房费明细房间归属（单间退房对账）
   const fiCols = q('PRAGMA table_info(folio_items)').map((c) => c.name);
@@ -217,28 +226,38 @@ function initSchema() {
   const clCols = q('PRAGMA table_info(city_ledger)').map((c) => c.name);
   if (!clCols.includes('ar_account_id')) run('ALTER TABLE city_ledger ADD COLUMN ar_account_id INTEGER');
   if (!clCols.includes('folio_item_id')) run('ALTER TABLE city_ledger ADD COLUMN folio_item_id INTEGER');
+  if (!clCols.includes('transferred_at')) run('ALTER TABLE city_ledger ADD COLUMN transferred_at TEXT');
   db.exec('CREATE INDEX IF NOT EXISTS idx_ledger_account ON city_ledger(ar_account_id, status)');
 
   migrateArAccounts();
   migrateFolioSettlements();
 }
 
-// 客账逐笔结账迁移（幂等）：历史「挂账」付款行按其金额冲抵本单消费，补齐 AR 结账批次
-// 状态口径见 settlement.js 的 STATUS_SQL：0=未结账 / 全额且含 AR=挂AR / 全额=已结账 / 其余=部分结账
+// 客账逐笔结账迁移（幂等）：历史「挂账」收款行退场
+//   新模型下挂账不产生收款行，挂账金额由消费侧的「挂 AR」分配承载；
+//   迁移把历史收款行的金额转到消费侧分配后删除该收款行（应收台账与结账批次保留），
+//   否则余额会同时被收款行和 AR 分配扣减两次。
+// 状态口径见 settlement.js 的 statusOf：整笔挂账=ar / 全额=settled / 无=open / 其余=partial
 function migrateFolioSettlements() {
   for (const pay of q("SELECT * FROM folio_items WHERE item_type='payment' AND method='挂账' ORDER BY id")) {
-    const done = Math.round((get('SELECT COALESCE(SUM(amount),0) AS s FROM folio_allocations WHERE item_id=?', pay.id).s || 0) * 100);
-    let left = Math.round(Math.abs(Number(pay.amount)) * 100) - done;
-    if (left <= 0) continue;
     const ledger = get('SELECT * FROM city_ledger WHERE folio_item_id=?', pay.id);
-    const sid = Number(run(
+    const paidC = Math.round(Math.abs(Number(pay.amount)) * 100);
+    // 复用既有批次（含已迁移或上一次迁移生成的），否则新建
+    let row = get(
+      `SELECT s.id FROM folio_settlements s JOIN folio_allocations al ON al.settlement_id=s.id
+       WHERE s.kind='ar' AND s.revoked_at IS NULL AND al.item_id=? AND al.side='payment' LIMIT 1`,
+      pay.id
+    );
+    if (!row && ledger) row = get("SELECT id FROM folio_settlements WHERE kind='ar' AND revoked_at IS NULL AND city_ledger_id=?", ledger.id);
+    const sid = row ? row.id : Number(run(
       `INSERT INTO folio_settlements (reservation_id, kind, ar_account_id, city_ledger_id, amount, remark, business_date, created_at)
        VALUES (?,?,?,?,?,?,?,?)`,
       pay.reservation_id, 'ar', ledger ? ledger.ar_account_id : null, ledger ? ledger.id : null,
-      left / 100, '历史挂账迁移', ledger ? ledger.business_date : null, pay.created_at
+      paidC / 100, '历史挂账迁移', ledger ? ledger.business_date : null, pay.created_at
     ).lastInsertRowid);
-    run('INSERT INTO folio_allocations (settlement_id, item_id, side, amount) VALUES (?,?,?,?)', sid, pay.id, 'payment', left / 100);
-    // 冲抵本单消费（最早优先）
+    // 冲抵本单消费（最早优先），补齐到该笔挂账金额
+    const doneC = Math.round((get("SELECT COALESCE(SUM(amount),0) AS s FROM folio_allocations WHERE settlement_id=? AND side='charge'", sid).s || 0) * 100);
+    let left = paidC - doneC;
     for (const c of q("SELECT * FROM folio_items WHERE reservation_id=? AND item_type IN ('room_charge','extra_charge','adj') AND amount > 0 ORDER BY id", pay.reservation_id)) {
       if (left <= 0) break;
       const used = Math.round((get('SELECT COALESCE(SUM(amount),0) AS s FROM folio_allocations WHERE item_id=?', c.id).s || 0) * 100);
@@ -247,8 +266,12 @@ function migrateFolioSettlements() {
       run('INSERT INTO folio_allocations (settlement_id, item_id, side, amount) VALUES (?,?,?,?)', sid, c.id, 'charge', take / 100);
       left -= take;
     }
-    run("UPDATE folio_items SET settle_status='ar' WHERE id=?", pay.id);
+    // 收款行退场：先删其分配（外键），再删行
+    run('DELETE FROM folio_allocations WHERE item_id=?', pay.id);
+    run('DELETE FROM folio_items WHERE id=?', pay.id);
   }
+  // 挂账收款行删除后，台账上的 folio_item_id 置空（关联改由 folio_settlements.city_ledger_id 承载）
+  run('UPDATE city_ledger SET folio_item_id=NULL WHERE folio_item_id IS NOT NULL AND folio_item_id NOT IN (SELECT id FROM folio_items)');
   // 重算有分配的行状态（历史无分配的行保持 open，退房时自动整单结账）
   for (const r of q(`SELECT f.id, f.amount,
                             COALESCE(SUM(al.amount),0) AS allocated,
@@ -258,8 +281,9 @@ function migrateFolioSettlements() {
                      JOIN folio_settlements s ON s.id=al.settlement_id
                      GROUP BY f.id`)) {
     const cap = Math.abs(Number(r.amount));
-    const status = r.allocated < 0.005 ? 'open'
-      : (r.allocated >= cap - 0.005 ? (r.ar_alloc > 0.005 ? 'ar' : 'settled') : 'partial');
+    const full = r.allocated >= cap - 0.005;
+    const status = (full && r.ar_alloc > 0.005) ? 'ar'
+      : (r.allocated < 0.005 ? 'open' : (full ? 'settled' : 'partial'));
     run('UPDATE folio_items SET settle_status=? WHERE id=?', status, r.id);
   }
 }

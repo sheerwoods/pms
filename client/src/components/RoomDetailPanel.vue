@@ -25,6 +25,8 @@
             size="small"
             :type="a.type || ''"
             :plain="a.plain"
+            :disabled="a.disabled"
+            :title="a.title || ''"
             @click="$emit(a.event, a.status)"
           >
             {{ a.text }}
@@ -42,7 +44,7 @@
         <template v-if="stay">
           <div class="info-item">
             <span class="k">客人姓名</span>
-            <span class="v guest">{{ stay.guest_name }}</span>
+            <span class="v guest">{{ guestNames }}</span>
           </div>
           <div class="info-item">
             <span class="k">入住时间</span>
@@ -118,10 +120,27 @@ const props = defineProps({
   item: { type: Object, default: null },
   summary: { type: Object, default: null }, // { consumption, payment, balance }
 });
-const emit = defineEmits(['close', 'checkout', 'edit', 'change-room', 'folio', 'checkin', 'book', 'walkin', 'set-house-status', 'open-order']);
+const emit = defineEmits(['close', 'checkout', 'edit', 'renew', 'change-room', 'folio', 'checkin', 'book', 'walkin', 'set-house-status', 'open-order']);
 
 const stay = computed(() => props.item?.reservation || null);
+// 该间在住人：入住人 + 同住人（详情里显示全部）
+const guestNames = computed(() => {
+  const s = stay.value;
+  if (!s) return '';
+  const names = [];
+  const primary = (s.unit_guest_name || '').trim();
+  if (primary) names.push(primary);
+  let coh = [];
+  try { coh = JSON.parse(s.unit_cohabitors || '[]'); } catch { /* 忽略脏数据 */ }
+  for (const c of coh) {
+    const n = String(c?.name || '').trim();
+    if (n) names.push(n);
+  }
+  return names.join('、') || s.guest_name;
+});
 const statusMeta = computed(() => (props.item ? ROOM_STATUS[props.item.eff_status] : null));
+// 续住前提：当前房间预离日 = 今日
+const dueToday = computed(() => String(stay.value?.check_out_date || '') === fmtDate());
 // 该房当前是否已入住（部分入住时预订状态仍为 reserved，但该房间已占）
 const isOccupied = computed(() => ['occupied_clean', 'occupied_dirty', 'due_out'].includes(props.item?.eff_status));
 
@@ -172,7 +191,7 @@ const actionGroups = computed(() => {
       { key: 'acc', text: '账务', event: 'folio', type: 'primary', plain: true },
     ] });
     groups.push({ label: '接待', items: [
-      { key: 'ext', text: '续住', event: 'edit', type: 'primary' },
+      { key: 'ext', text: '续住', event: 'renew', type: 'primary', disabled: !dueToday, title: dueToday ? '' : '仅可对今日离店的房间续住' },
       { key: 'chg', text: '换房', event: 'change-room', type: 'primary', plain: true },
     ] });
     groups.push({ label: '房态', items: houseActions() });

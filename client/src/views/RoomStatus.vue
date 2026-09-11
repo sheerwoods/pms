@@ -107,6 +107,7 @@
         @close="closeDetail"
         @checkout="doCheckout"
         @edit="openEdit"
+        @renew="doRenew"
         @change-room="openChangeRoom"
         @folio="openFolio"
         @checkin="doCheckin"
@@ -126,6 +127,7 @@
     <ChangeRoomDialog v-model:visible="changeRoomVisible" :reservation="currentRes" :unit-id="currentUnitId" @saved="onSaved" />
     <FolioDialog v-model:visible="folioVisible" :reservation-id="currentRes?.id" @changed="onSaved" />
     <OrderDetailDialog v-model:visible="orderDetailVisible" :reservation-id="currentOrderId" :room-id="currentRoomId" @changed="onSaved" />
+    <RenewDialog v-model:visible="renewVisible" :reservation-id="currentRes?.id" :unit-id="currentUnitId" @saved="onSaved" />
   </div>
 </template>
 
@@ -143,6 +145,7 @@ import ChangeRoomDialog from '../components/ChangeRoomDialog.vue';
 import FolioDialog from '../components/FolioDialog.vue';
 import RoomDetailPanel from '../components/RoomDetailPanel.vue';
 import OrderDetailDialog from '../components/OrderDetailDialog.vue';
+import RenewDialog from '../components/RenewDialog.vue';
 
 const date = ref(fmtDate());
 const roomTypes = ref([]);
@@ -172,6 +175,7 @@ const initialForm = ref(null);
 const orderDetailVisible = ref(false);
 const currentOrderId = ref(null);
 const currentRoomId = ref(null);
+const renewVisible = ref(false);
 
 const floors = computed(() => [...new Set(statusRooms.value.map((x) => x.room.floor))].sort((a, b) => a - b));
 
@@ -189,7 +193,9 @@ const baseRooms = computed(() =>
     if (keyword.value && keyword.value.trim()) {
       const k = keyword.value.trim().toLowerCase();
       const roomHit = (x.room.room_no || '').toLowerCase().includes(k);
-      const guestHit = (x.reservation?.guest_name || '').toLowerCase().includes(k);
+      const guestHit = x.reservation
+        ? [...unitGuestNames(x.reservation), x.reservation.guest_name || ''].join('').toLowerCase().includes(k)
+        : false;
       if (!roomHit && !guestHit) return false;
     }
     return true;
@@ -226,8 +232,21 @@ function cardStyle(item) {
   const s = statusMeta(item);
   return { background: s.bg, borderColor: s.color };
 }
+// 该间在住人：入住人 + 同住人；房态方块只取前 2 位
+function unitGuestNames(res) {
+  const names = [];
+  const primary = (res.unit_guest_name || '').trim();
+  if (primary) names.push(primary);
+  let coh = [];
+  try { coh = JSON.parse(res.unit_cohabitors || '[]'); } catch { /* 忽略脏数据 */ }
+  for (const c of coh) {
+    const n = String(c?.name || '').trim();
+    if (n) names.push(n);
+  }
+  return names;
+}
 function guestText(item) {
-  if (item.reservation) return item.reservation.guest_name;
+  if (item.reservation) return unitGuestNames(item.reservation).slice(0, 2).join('、') || item.reservation.guest_name;
   if (item.eff_status === 'ooo') return '维修封房';
   return statusMeta(item).text;
 }
@@ -381,6 +400,7 @@ async function doCheckout() {
   checkoutVisible.value = true;
 }
 function openEdit() { setCurrentRes(); editVisible.value = true; }
+function doRenew() { setCurrentRes(); renewVisible.value = true; }
 function openChangeRoom() { setCurrentRes(); changeRoomVisible.value = true; }
 function openFolio() { setCurrentRes(); folioVisible.value = true; }
 function openOrder() {
@@ -402,17 +422,31 @@ function openWalkin() {
 
 async function setHouseStatus(status) {
   const labels = { clean: '设为干净', dirty: '设为脏', ooo: '维修封房' };
-  const roomNo = detailItem.value.room.room_no;
-  try {
-    await ElMessageBox.confirm(`确认将房间 ${roomNo} ${labels[status]}？`, '提示', { type: 'warning' });
-  } catch (e) {
-    return;
+  const room = detailItem.value.room;
+  const payload = { status };
+  // 置净/置脏无需确认；置维修需确认并可填写备注
+  if (status === 'ooo') {
+    let input;
+    try {
+      ({ value: input } = await ElMessageBox.prompt(`确认将房间 ${room.room_no} ${labels[status]}？`, '提示', {
+        type: 'warning',
+        inputPlaceholder: '维修备注（选填）',
+        inputValue: '',
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+      }));
+    } catch (e) {
+      return;
+    }
+    payload.remark = input || '';
   }
-  await http.put(`/rooms/${detailItem.value.room.id}/status`, { status });
+  await http.put(`/rooms/${room.id}/status`, payload);
   ElMessage.success('客房状态已更新');
   await load();
   store.loadStats();
-  await refreshDetail();
+  // 置净/置脏后关闭信息框；维修封房保留信息框以便查看备注
+  if (status === 'ooo') await refreshDetail();
+  else closeDetail();
 }
 
 async function onSaved() {

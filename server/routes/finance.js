@@ -37,6 +37,18 @@ router.get('/finance/folio', wrap((req, res) => {
   if (!reservation_id) throw new AppError('缺少 reservation_id');
   const r = get('SELECT * FROM reservations WHERE id=?', reservation_id);
   if (!r) throw new AppError('订单不存在', 404);
+  // 子单房间列表：供前端消费选房间、明细显示房号
+  const units = q(
+    `SELECT rr.id, rr.room_id, rr.room_type_id, rr.status, rr.guest_name, rr.check_out_date,
+            rm.room_no, rt.name AS type_name
+     FROM reservation_rooms rr
+     LEFT JOIN rooms rm ON rm.id=rr.room_id
+     LEFT JOIN room_types rt ON rt.id=rr.room_type_id
+     WHERE rr.reservation_id=? ORDER BY rr.id`,
+    reservation_id
+  );
+  const unitMap = {};
+  for (const u of units) unitMap[u.id] = u;
   const items = itemStates(reservation_id).map((s) => ({
     ...s.item,
     kind: itemKind(s.item),
@@ -44,9 +56,14 @@ router.get('/finance/folio', wrap((req, res) => {
     settle_side: s.side,                                  // charge / payment / null（不参与配对）
     settled_amount: round2(s.allocC / 100),
     unsettled_amount: s.side ? round2(s.remainingC / 100) : 0,
+    ar_amount: round2(s.arAllocC / 100),                  // 已挂 AR 部分（不计客人应收）
+    ar_locked: s.locked,                                  // 已挂 AR 结清：客账内不可操作
+    unit_room_no: s.item.room_unit_id ? (unitMap[s.item.room_unit_id]?.room_no || '') : '',
+    unit_type_name: s.item.room_unit_id ? (unitMap[s.item.room_unit_id]?.type_name || '') : '',
   }));
   res.json({
     reservation: r,
+    units,
     items,
     summary: folioSummary(items),
     balance: getBalance(reservation_id),                 // 应收（欠款）
@@ -69,7 +86,7 @@ router.post('/finance/settlements/:id/revoke', wrap((req, res) => {
 
 // ============ 加账/收款/退款/押金/调整 ============
 router.post('/finance/items', wrap((req, res) => {
-  const { reservation_id, item_type, category = '', description = '', amount, method = '' } = req.body;
+  const { reservation_id, item_type, category = '', description = '', amount, method = '', room_unit_id } = req.body;
   if (!reservation_id) throw new AppError('缺少 reservation_id');
   const r = get('SELECT * FROM reservations WHERE id=?', reservation_id);
   if (!r) throw new AppError('订单不存在', 404);
@@ -94,7 +111,16 @@ router.post('/finance/items', wrap((req, res) => {
   } else if (item_type === 'adj') {
     addFolioItem({ ...common, itemType: 'adj', category: category || '调整', description: description || '账务调整', amount: amt, method });
   } else {
-    addFolioItem({ ...common, itemType: 'extra_charge', category: category || '杂费', description: description || '杂费', amount: amt, method });
+    // 消费（杂费）：多子单账单必须选择房间，消费按子单归集；无子单的历史订单允许为空
+    let roomUnitId = null;
+    const unitCount = get('SELECT COUNT(*) AS c FROM reservation_rooms WHERE reservation_id=?', reservation_id).c;
+    if (unitCount > 0) {
+      if (!room_unit_id) throw new AppError('请选择消费所属房间');
+      const unit = get('SELECT id FROM reservation_rooms WHERE id=? AND reservation_id=?', room_unit_id, reservation_id);
+      if (!unit) throw new AppError('房间子单不存在');
+      roomUnitId = unit.id;
+    }
+    addFolioItem({ ...common, itemType: 'extra_charge', category: category || '杂费', description: description || '杂费', amount: amt, method, roomUnitId });
   }
   res.json({ ok: true, balance: getBalance(reservation_id), deposit_balance: getDepositBalance(reservation_id) });
 }));
@@ -147,7 +173,8 @@ router.get('/finance/transactions', wrap((req, res) => {
   const list = q(`SELECT f.*, ${F_BD} AS bdate, r.order_no, r.guest_name, rm.room_no
                   FROM folio_items f
                   LEFT JOIN reservations r ON r.id=f.reservation_id
-                  LEFT JOIN rooms rm ON rm.id=r.room_id
+                  LEFT JOIN reservation_rooms rr ON rr.id=f.room_unit_id
+                  LEFT JOIN rooms rm ON rm.id=COALESCE(rr.room_id, r.room_id)
                   ${where} ORDER BY f.id DESC`, ...params)
     .map((it) => ({ ...it, kind: itemKind(it) }));
   const totalAmount = round2(list.reduce((s, x) => s + x.amount, 0));
@@ -160,7 +187,12 @@ router.get('/finance/transactions', wrap((req, res) => {
 router.get('/finance/report', wrap((req, res) => {
   const { start, end } = req.query;
   if (!start || !end) throw new AppError('缺少日期范围');
-  const items = q(`SELECT f.*, ${F_BD} AS bdate FROM folio_items f
+  // ar_amount：该消费行已挂 AR 的部分（仍计收入，但计入挂账应收而非实收）
+  const items = q(`SELECT f.*, ${F_BD} AS bdate,
+                          COALESCE((SELECT SUM(al.amount) FROM folio_allocations al
+                                    JOIN folio_settlements st ON st.id=al.settlement_id
+                                    WHERE al.item_id=f.id AND al.side='charge' AND st.kind='ar'),0) AS ar_amount
+                   FROM folio_items f
                    WHERE ${F_BD} >= ? AND ${F_BD} <= ?
                    ORDER BY bdate, f.id`, start, end);
 
@@ -175,16 +207,20 @@ router.get('/finance/report', wrap((req, res) => {
     const d = it.bdate;
     if (!byDate[d]) byDate[d] = { room: 0, extra: 0, payment: 0, refund: 0 };
     const kind = itemKind(it);
+    const arAmt = Number(it.ar_amount) || 0;
     if (kind === 'room_charge') {
       roomRevenue += it.amount;
+      cityLedgerTotal += arAmt;                         // 挂 AR 部分计入应收，不切实收
       byDate[d].room += it.amount;
       chargeByCategory['房费'] = (chargeByCategory['房费'] || 0) + it.amount;
     } else if (kind === 'extra_charge') {
       extraRevenue += it.amount;
+      cityLedgerTotal += arAmt;
       byDate[d].extra += it.amount;
       const c = it.category || '杂费';
       chargeByCategory[c] = (chargeByCategory[c] || 0) + it.amount;
     } else if (kind === 'adj') {
+      cityLedgerTotal += arAmt;
       adjTotal += it.amount;                            // 调整独立列示，不进收入分类
     } else if (kind === 'payment') {
       paymentTotal += -it.amount;
@@ -213,7 +249,7 @@ router.get('/finance/report', wrap((req, res) => {
   // 间夜/入住率：营业日 d 统计该晚在住子单数（ci <= d && co > d）
   const stayUnits = q(
     `SELECT COALESCE(r.actual_check_in, r.check_in_date) AS in_at,
-            COALESCE(rr.actual_check_out, r.check_out_date) AS out_at
+            COALESCE(rr.actual_check_out, rr.check_out_date, r.check_out_date) AS out_at
      FROM reservation_rooms rr JOIN reservations r ON r.id=rr.reservation_id
      WHERE rr.status IN ('checked_in','checked_out')`
   ).map((u) => ({ ci: String(u.in_at).slice(0, 10), co: String(u.out_at).slice(0, 10) }));

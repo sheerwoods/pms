@@ -1,15 +1,38 @@
 <template>
   <el-dialog
     :model-value="visible"
-    title="修改房价"
+    title="子单房价 / 改预离日"
     width="620px"
     :close-on-click-modal="false"
     @update:model-value="(v) => $emit('update:visible', v)"
     @closed="reset"
     class="modify-price-dialog"
   >
-    <div v-if="reservation" class="mpd-body">
-      <el-table :data="rows" size="default" border class="mpd-table" max-height="320">
+    <div v-if="reservation && unit" class="mpd-body">
+      <div class="mpd-unit">
+        <span class="mpd-k">房间</span>
+        <b>{{ unit.room_no || '待排房' }}</b>
+        <span class="mpd-rk">入住 {{ startDate }}</span>
+      </div>
+      <div class="mpd-form">
+        <div class="mpd-row">
+          <span class="mpd-k">预离日</span>
+          <el-date-picker
+            v-model="checkOut"
+            type="date"
+            value-format="YYYY-MM-DD"
+            :clearable="false"
+            :disabled="isHourly"
+            :disabled-date="disabledDeparture"
+            size="small"
+            style="width: 190px"
+            @change="onCheckOutChange"
+          />
+          <span class="mpd-hint">{{ isHourly ? '钟点房固定住当日' : '仅作用于本子单，不影响其他房间' }}</span>
+        </div>
+      </div>
+
+      <el-table :data="rows" size="default" border class="mpd-table" max-height="300">
         <el-table-column label="日期" width="150">
           <template #default="{ row }">{{ row.date }}</template>
         </el-table-column>
@@ -44,7 +67,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { Bottom } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import http from '../api';
@@ -53,10 +76,12 @@ import { nightsBetween, addDays } from '../utils/format';
 const props = defineProps({
   visible: Boolean,
   reservation: { type: Object, default: null },
+  unit: { type: Object, default: null }, // 当前操作的房间子单（reservation_rooms 行）
 });
 const emit = defineEmits(['update:visible', 'saved']);
 
 const rows = ref([]);
+const checkOut = ref('');
 const reason = ref('');
 const remark = ref('');
 const saving = ref(false);
@@ -67,6 +92,13 @@ function weekday(dateStr) {
   return '星期' + WEEKDAYS[d.getDay()];
 }
 
+const isHourly = computed(() => props.reservation?.booking_type === '钟点房');
+const startDate = computed(() => {
+  const r = props.reservation;
+  if (!r) return '';
+  return (r.actual_check_in ? String(r.actual_check_in).slice(0, 10) : r.check_in_date) || '';
+});
+
 function safeLines(r) {
   try {
     const a = JSON.parse(r.lines || '[]');
@@ -75,25 +107,65 @@ function safeLines(r) {
   return [{ room_type_id: r.room_type_id || null, rooms: r.rooms || 1, rate: r.rate || 0, rates: r.rates || '{}' }];
 }
 function parseRatesMap(v) {
+  if (Array.isArray(v)) {
+    const m = {};
+    v.forEach((x) => { if (x && x.date) m[x.date] = Number(x.price) || 0; });
+    return m;
+  }
   if (v && typeof v === 'object') return v;
   try { return JSON.parse(v || '{}'); } catch { return {}; }
 }
 
-// 按首行房价表构建每晚列表（每夜一行）
-function buildRows() {
-  const r = props.reservation;
-  if (!r) { rows.value = []; return; }
-  const isHourly = r.booking_type === '钟点房';
-  const ci = r.check_in_date;
-  const n = isHourly ? 1 : (Number(r.nights) || nightsBetween(r.check_in_date, r.check_out_date) || 1);
-  const first = safeLines(r)[0] || {};
-  const map = parseRatesMap(first.rates);
+// 本子单的线路（用于回退线路价）
+function unitLine() {
+  const r = props.reservation, u = props.unit;
+  if (!r || !u) return {};
+  const lines = safeLines(r);
+  return lines[u.line_index ?? 0] || lines[0] || {};
+}
+
+// 构建本子单的逐晚价目：子单逐晚覆盖 → 子单单值覆盖 → 线路当晚价 → 线路价
+function buildRows(preserve = false) {
+  const r = props.reservation, u = props.unit;
+  if (!r || !u) { rows.value = []; return; }
+  const start = startDate.value;
+  let end = checkOut.value || u.check_out_date || r.check_out_date;
+  if (isHourly.value) end = start;
+  const n = isHourly.value ? 1 : Math.max(1, nightsBetween(start, end));
+  const ln = unitLine();
+  const unitMap = parseRatesMap(u.rates);
+  const lineMap = parseRatesMap(ln.rates);
+  const unitRate = Number(u.rate) > 0 ? Number(u.rate) : 0;
+  const prev = {};
+  if (preserve) rows.value.forEach((x) => { prev[x.date] = x.price; });
   const arr = [];
   for (let i = 0; i < n; i++) {
-    const d = addDays(ci, i);
-    arr.push({ date: d, price: map[d] != null ? Number(map[d]) : (Number(first.rate) || 0) });
+    const d = addDays(start, i);
+    const price = prev[d] != null ? prev[d]
+      : unitMap[d] != null ? Number(unitMap[d])
+      : unitRate > 0 ? unitRate
+      : lineMap[d] != null ? Number(lineMap[d])
+      : (Number(ln.rate) || 0);
+    arr.push({ date: d, price });
   }
   rows.value = arr;
+}
+
+function disabledDeparture(d) {
+  const start = startDate.value;
+  if (!start) return false;
+  const s = new Date(start + 'T00:00:00').getTime();
+  return d.getTime() <= s;
+}
+
+// 改预离日：保留已填价格，按新跨度增减晚次
+function onCheckOutChange() {
+  if (isHourly.value) return;
+  if (!checkOut.value || checkOut.value <= startDate.value) {
+    checkOut.value = addDays(startDate.value, 1);
+    return;
+  }
+  buildRows(true);
 }
 
 // 将某行价格应用到之后的所有日期
@@ -103,71 +175,61 @@ function applyDown(idx) {
 }
 
 async function save() {
-  const r = props.reservation;
-  if (!r) return;
-  const ci = r.check_in_date;
-  const co = r.check_out_date;
-  const n = rows.value.length;
-  if (!n) return ElMessage.warning('没有可修改的日期');
-
-  let raw = [];
-  try { raw = JSON.parse(r.lines || '[]'); } catch { /* */ }
-  if (!Array.isArray(raw) || !raw.length) {
-    raw = [{ room_type_id: r.room_type_id || null, rooms: r.rooms || 1, rate: Number(r.rate) || 0, rates: [] }];
-  }
-  // 归一化各线路每晚价格，保留除首行外的原价
-  const lines = raw.map((ln) => {
-    let map = {};
-    if (typeof ln.rates === 'string') { try { map = JSON.parse(ln.rates) || {}; } catch { /* */ } }
-    else if (Array.isArray(ln.rates)) { ln.rates.forEach((x) => { map[x.date] = x.price; }); }
-    else if (ln.rates && typeof ln.rates === 'object') { map = ln.rates; }
-    const rates = [];
-    for (let i = 0; i < n; i++) {
-      const d = addDays(ci, i);
-      rates.push({ date: d, price: map[d] != null ? Number(map[d]) : (Number(ln.rate) || 0) });
-    }
-    return { room_type_id: ln.room_type_id || null, rooms: ln.rooms || 1, rate: Number(ln.rate) || 0, rates };
-  });
-  // 首行（订单房价）应用本弹窗的每晚新价
-  if (lines[0]) {
-    lines[0].rate = rows.value[0]?.price || 0;
-    lines[0].rates = rows.value.map((x) => ({ date: x.date, price: x.price }));
+  const r = props.reservation, u = props.unit;
+  if (!r || !u) return;
+  if (!rows.value.length) return ElMessage.warning('没有可修改的日期');
+  if (!isHourly.value && (!checkOut.value || checkOut.value <= startDate.value)) {
+    return ElMessage.warning('离店日期必须晚于入住日期');
   }
 
   const noteParts = [];
   if (reason.value) noteParts.push(`改价原因：${reason.value}`);
   if (remark.value) noteParts.push(remark.value);
   const app = noteParts.join('；');
-  const newRemark = app ? (r.remark ? `${r.remark}；${app}` : app) : r.remark;
+  const baseRemark = u.remark || '';
+  const newRemark = app ? (baseRemark ? `${baseRemark}；${app}` : app) : baseRemark;
+
+  const payload = {
+    rates: rows.value.map((x) => ({ date: x.date, price: Number(x.price) || 0 })),
+    remark: newRemark,
+  };
+  if (!isHourly.value) payload.check_out_date = checkOut.value;
 
   saving.value = true;
   try {
-    await http.put(`/reservations/${r.id}`, {
-      check_in_date: ci,
-      check_out_date: co,
-      booking_type: r.booking_type,
-      rate: lines[0]?.rate || 0,
-      lines,
-      remark: newRemark,
-    });
-    ElMessage.success('房价已修改');
+    await http.put(`/reservations/${r.id}/rooms/${u.id}/room-info`, payload);
+    ElMessage.success('子单房价已修改');
     emit('update:visible', false);
     emit('saved');
   } catch (e) { /* 拦截器已提示 */ } finally { saving.value = false; }
 }
 
-function reset() { rows.value = []; reason.value = ''; remark.value = ''; }
-watch(() => props.visible, (v) => { if (v) { buildRows(); reason.value = ''; remark.value = ''; } });
+function reset() { rows.value = []; checkOut.value = ''; reason.value = ''; remark.value = ''; }
+
+watch(
+  () => props.visible,
+  (v) => {
+    if (!v) return;
+    const r = props.reservation, u = props.unit;
+    checkOut.value = (u && (u.check_out_date || r?.check_out_date)) || '';
+    reason.value = ''; remark.value = '';
+    buildRows();
+  }
+);
 </script>
 
 <style scoped>
-.mpd-body { display: flex; flex-direction: column; gap: 16px; }
+.mpd-body { display: flex; flex-direction: column; gap: 14px; }
+.mpd-unit { display: flex; align-items: center; gap: 10px; color: #495057; font-size: 14px; }
+.mpd-unit b { color: #1c7ed6; font-size: 15px; }
+.mpd-unit .mpd-rk { color: #909399; font-size: 13px; }
 .mpd-table :deep(.el-table__header th) { background: #eaf2fb; color: #303133; }
 .mpd-down { margin-right: 6px; color: #1c7ed6; }
 .mpd-form { display: flex; flex-direction: column; gap: 12px; }
-.mpd-row { display: flex; align-items: flex-start; gap: 12px; }
+.mpd-row { display: flex; align-items: center; gap: 12px; }
 .mpd-row .mpd-k { width: 60px; color: #303133; font-size: 14px; line-height: 32px; flex-shrink: 0; }
 .mpd-row .el-input, .mpd-row .el-textarea { flex: 1; }
+.mpd-row .mpd-hint { color: #909399; font-size: 12px; }
 </style>
 
 <style>

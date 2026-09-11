@@ -23,13 +23,21 @@ function addFolioItem({
   ).lastInsertRowid);
 }
 
-// 应收余额（欠款）：不含押金与备注
+// 应收余额（欠款）：不含押金与备注；已挂 AR 的消费部分转由应收账款承担，须扣除
 function getBalance(reservationId) {
   const r = get(
     "SELECT COALESCE(SUM(amount),0) AS bal FROM folio_items WHERE reservation_id=? AND item_type NOT IN ('deposit','info')",
     reservationId
   );
-  return Math.round((r.bal || 0) * 100) / 100;
+  const ar = get(
+    `SELECT COALESCE(SUM(al.amount),0) AS s
+     FROM folio_allocations al
+     JOIN folio_settlements st ON st.id=al.settlement_id
+     JOIN folio_items f ON f.id=al.item_id
+     WHERE st.kind='ar' AND al.side='charge' AND f.reservation_id=?`,
+    reservationId
+  );
+  return Math.round(((r.bal || 0) - (ar.s || 0)) * 100) / 100;
 }
 
 // 押金余额（收取为正、退还为负）

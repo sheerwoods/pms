@@ -127,12 +127,13 @@
           <el-table-column v-if="status === 'checked_out'" label="总消费" width="100" align="right">
             <template #default="{ row }"><span class="amt-out">−{{ fmtMoney(row.total_consume) }}</span></template>
           </el-table-column>
-          <el-table-column label="操作" width="200">
+          <el-table-column label="操作" width="260">
             <template #default="{ row }">
               <el-button link type="info" size="small" @click="openRoomDetail(row)">详情</el-button>
               <template v-if="row.unit_status === 'checked_in'">
                 <el-button link type="danger" size="small" @click="doRoomCheckout(row)">退房</el-button>
-                <el-button link type="primary" size="small" @click="openEdit(row)">续住</el-button>
+                <el-button link type="primary" size="small" :disabled="row.check_out_date !== today" :title="row.check_out_date !== today ? '仅可对今日离店的房间续住' : ''" @click="openRenew(row)">续住</el-button>
+                <el-button link type="primary" size="small" @click="openExtend(row)">调价</el-button>
               </template>
               <el-button link size="small" @click="openFolio(row)">账单</el-button>
             </template>
@@ -161,6 +162,8 @@
     <OrderDetailDialog v-model:visible="detailVisible" :reservation-id="currentRes?.id" :room-id="detailRoomId" :unit-id="detailUnitId" @changed="onSaved" />
     <RoomAssignDialog v-model:visible="assignVisible" :reservation="currentRes" @saved="onSaved" />
     <FolioDialog v-model:visible="folioVisible" :reservation-id="folioReservationId" @changed="onSaved" />
+    <ModifyPriceDialog v-model:visible="priceVisible" :reservation="priceRes" :unit="priceUnit" @saved="onSaved" />
+    <RenewDialog v-model:visible="renewVisible" :reservation-id="renewRes?.id" :unit-id="renewUnit?.id" @saved="onSaved" />
   </div>
 </template>
 
@@ -177,7 +180,10 @@ import ChangeRoomDialog from '../components/ChangeRoomDialog.vue';
 import OrderDetailDialog from '../components/OrderDetailDialog.vue';
 import RoomAssignDialog from '../components/RoomAssignDialog.vue';
 import FolioDialog from '../components/FolioDialog.vue';
+import ModifyPriceDialog from '../components/ModifyPriceDialog.vue';
+import RenewDialog from '../components/RenewDialog.vue';
 
+const today = fmtDate();
 const status = ref('reserved');
 const keyword = ref('');
 const dateRange = ref([]);
@@ -200,6 +206,12 @@ const folioVisible = ref(false);
 const folioReservationId = ref(null);
 const currentRes = ref(null);
 const changeRoomUnitId = ref(null);
+const priceVisible = ref(false);
+const priceRes = ref(null);
+const priceUnit = ref(null);
+const renewVisible = ref(false);
+const renewRes = ref(null);
+const renewUnit = ref(null);
 
 // 「在住/已退」tab：一房一单，把订单展开成逐间子单；同一订单的全部子单一起列出（含已退），
 // 「已预订/已取消」保持整单行
@@ -232,7 +244,7 @@ const viewRows = computed(() => {
         room_no: u.room_no,
         rate: Number(u.rate) || 0,
         check_in_date: (res.actual_check_in ? String(res.actual_check_in).slice(0, 10) : res.check_in_date),
-        check_out_date: u.actual_check_out || res.check_out_date,
+        check_out_date: u.actual_check_out || u.check_out_date || res.check_out_date,
         total_amount: res.total_amount,
         total_consume: res.total_consume,
         status: res.status,
@@ -263,7 +275,13 @@ function lineRateMap(ln) {
     ln.rates.forEach((x) => { if (x && x.date) m[x.date] = Number(x.price) || 0; });
     return m;
   }
+  if (typeof ln.rates === 'object') return ln.rates;
   try { return JSON.parse(ln.rates) || {}; } catch { return {}; }
+}
+
+// 子单逐晚价表（reservation_rooms.rates）
+function unitRateMap(u) {
+  return lineRateMap(u && { rates: u.rates });
 }
 
 function lineOfUnit(u, res) {
@@ -279,10 +297,12 @@ function lineOfUnit(u, res) {
 function todayRate(row) {
   const u = row._unit, res = row._res;
   if (!u) return Number(row.rate) || 0;
+  const t = fmtDate();
+  const um = unitRateMap(u);
+  if (um[t] != null) return Number(um[t]) || 0;
   if (Number(u.rate) > 0) return Number(u.rate);
   const ln = lineOfUnit(u, res);
   const map = lineRateMap(ln);
-  const t = fmtDate();
   if (map[t] != null) return Number(map[t]) || 0;
   const dates = Object.keys(map).sort();
   if (dates.length) return Number(map[dates[0]]) || Number(ln.rate) || 0;
@@ -293,10 +313,12 @@ function todayRate(row) {
 function unitFirstRate(row) {
   const u = row._unit, res = row._res;
   if (!u) return Number(row.rate) || 0;
+  const d = (res.actual_check_in ? String(res.actual_check_in).slice(0, 10) : res.check_in_date);
+  const um = unitRateMap(u);
+  if (um[d] != null) return Number(um[d]) || 0;
   if (Number(u.rate) > 0) return Number(u.rate);
   const ln = lineOfUnit(u, res);
   const map = lineRateMap(ln);
-  const d = (res.actual_check_in ? String(res.actual_check_in).slice(0, 10) : res.check_in_date);
   if (map[d] != null) return Number(map[d]) || 0;
   const dates = Object.keys(map).sort();
   if (dates.length) return Number(map[dates[0]]) || 0;
@@ -378,6 +400,18 @@ function openCreate() {
 function openEdit(row) {
   currentRes.value = row.isRoomRow ? row._res : row;
   editVisible.value = true;
+}
+// 调价 / 改预离日：仅作用于当前子单
+function openExtend(row) {
+  priceRes.value = row.isRoomRow ? row._res : row;
+  priceUnit.value = row.isRoomRow ? row._unit : (row.room_list?.[0] || null);
+  priceVisible.value = true;
+}
+// 续住：结账退房旧单 -> 按来源预订单/新建单续住当前房间与入住人
+function openRenew(row) {
+  renewRes.value = row.isRoomRow ? row._res : row;
+  renewUnit.value = row.isRoomRow ? row._unit : (row.room_list?.find((u) => u.status === 'checked_in') || null);
+  renewVisible.value = true;
 }
 function openCheckin(row) {
   currentRes.value = row;

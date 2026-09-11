@@ -3,7 +3,6 @@ const { run, get, q } = require('./db');
 const { withTx } = require('./tx');
 const { round2, now } = require('./utils');
 const { AppError } = require('./errors');
-const { addFolioItem } = require('./folio');
 const { currentBusinessDate } = require('./accounting');
 
 const cents = (n) => Math.round((Number(n) || 0) * 100);
@@ -37,26 +36,21 @@ function accountTotals(arAccountId) {
   return { total: round2(r.total), settled: round2(r.settled), outstanding: round2(r.outstanding) };
 }
 
-// 挂账到 AR 账户：客账付款 + 应收明细，同一事务
+// 挂账到 AR 账户：只生成应收明细，不产生客账收款行
+// 客账侧由「消费行挂 AR」承载（folio_allocations 消费侧分配），应收余额相应减少
 function createArEntryTx({ reservationId, guestId, guestName, arAccountId, amount, remark = '' }) {
   const acct = requireActiveAccount(arAccountId);
   const amt = round2(amount);
   if (!(amt > 0)) throw new AppError('挂账金额必须大于 0');
   const bd = currentBusinessDate();
   return withTx(() => {
-    const folioId = addFolioItem({
-      reservationId, guestId, itemType: 'payment', method: '挂账',
-      category: '挂账',
-      description: `挂账至 ${acct.name}${remark ? '（' + remark + '）' : ''}`,
-      amount: -amt, businessDate: bd,
-    });
     const entryId = Number(run(
       `INSERT INTO city_ledger
-         (reservation_id, guest_id, guest_name, company, amount, business_date, ar_account_id, folio_item_id, remark)
-       VALUES (?,?,?,?,?,?,?,?,?)`,
-      reservationId, guestId, guestName || '', acct.name, amt, bd, acct.id, folioId, remark
+         (reservation_id, guest_id, guest_name, company, amount, business_date, ar_account_id, remark)
+       VALUES (?,?,?,?,?,?,?,?)`,
+      reservationId, guestId, guestName || '', acct.name, amt, bd, acct.id, remark
     ).lastInsertRowid);
-    return { entry_id: entryId, folio_item_id: folioId, ar_account_id: acct.id, amount: amt, account_name: acct.name };
+    return { entry_id: entryId, ar_account_id: acct.id, amount: amt, account_name: acct.name };
   });
 }
 
