@@ -29,60 +29,115 @@
 
     <!-- 表格 -->
     <el-card shadow="never">
-      <el-table :data="list" border stripe size="default" v-loading="loading">
-        <el-table-column label="单号" width="150">
-          <template #default="{ row }">
-            <div class="order-no">{{ row.order_no }}</div>
-          </template>
-        </el-table-column>
-        <el-table-column label="外部订单号" min-width="120">
-          <template #default="{ row }">{{ row.source_order_no || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="预定人" min-width="110">
-          <template #default="{ row }">
-            <div class="guest-name">{{ row.guest_name }}</div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="source" label="来源" width="70" />
-        <el-table-column label="入住类型" width="90">
-          <template #default="{ row }">{{ row.booking_type || '全日房' }}</template>
-        </el-table-column>
-        <el-table-column label="房型" min-width="160">
-          <template #default="{ row }">
-            <div class="type-desc">{{ typeDesc(row) }}</div>
-          </template>
-        </el-table-column>
-        <el-table-column label="房号" width="130">
-          <template #default="{ row }">
-            <div class="room-cell">
-              <span class="room-nos">{{ assignedRoomNos(row) }}</span>
-              <el-link v-if="(row.status === 'reserved' || row.status === 'checked_in') && unassignedRoomCount(row) > 0" type="primary" @click="openAssign(row)">排房</el-link>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="check_in_date" label="入住" width="100" />
-        <el-table-column prop="check_out_date" label="离店" width="100" />
-        <el-table-column label="首日房价" width="100" align="right">
-          <template #default="{ row }"><div class="type-desc">{{ firstRateDesc(row) }}</div></template>
-        </el-table-column>
-        <el-table-column label="总额" width="90" align="right">
-          <template #default="{ row }">{{ fmtMoney(row.total_amount) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="260">
-          <template #default="{ row }">
-            <el-button link type="info" size="small" @click="openDetail(row)">详情</el-button>
-            <el-button v-if="row.status === 'reserved' && (row.pending_rooms ?? row.rooms ?? 1) > 0" link type="primary" size="small" @click="openCheckin(row)">
-              {{ row.checked_in_rooms > 0 ? '继续入住' : '入住' }}
-            </el-button>
-            <el-button v-if="row.status === 'reserved' && !(row.checked_in_rooms > 0)" link type="danger" size="small" @click="doCancel(row)">取消</el-button>
+      <el-table :data="viewRows" border stripe size="default" v-loading="loading" :span-method="spanMethod">
+        <!-- 已预订/已取消：按订单整单展示，保持原有字段 -->
+        <template v-if="!isPerRoom">
+          <el-table-column label="单号" width="150">
+            <template #default="{ row }">
+              <div class="order-no">{{ row.order_no }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column label="外部订单号" min-width="120">
+            <template #default="{ row }">{{ row.source_order_no || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="预定人" min-width="110">
+            <template #default="{ row }">
+              <div class="guest-name">{{ row.guest_name }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="source" label="来源" width="70" />
+          <el-table-column label="入住类型" width="90">
+            <template #default="{ row }">{{ row.booking_type || '全日房' }}</template>
+          </el-table-column>
+          <el-table-column label="房型" min-width="160">
+            <template #default="{ row }"><div class="type-desc">{{ typeDesc(row) }}</div></template>
+          </el-table-column>
+          <el-table-column label="房号" width="130">
+            <template #default="{ row }">
+              <div class="room-cell">
+                <span class="room-nos">{{ assignedRoomNos(row) }}</span>
+                <el-link v-if="(row.status === 'reserved' || row.status === 'checked_in') && unassignedRoomCount(row) > 0" type="primary" @click="openAssign(row)">排房</el-link>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="check_in_date" label="入住" width="100" />
+          <el-table-column prop="check_out_date" label="离店" width="100" />
+          <el-table-column label="首日房价" width="110" align="right">
+            <template #default="{ row }"><div class="type-desc">{{ firstRateDesc(row) }}</div></template>
+          </el-table-column>
+          <el-table-column label="总额" width="90" align="right">
+            <template #default="{ row }">{{ fmtMoney(row.total_amount) }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="260">
+            <template #default="{ row }">
+              <el-button link type="info" size="small" @click="openDetail(row)">详情</el-button>
+              <el-tag v-if="row.status === 'reserved' && row.checked_in_rooms > 0" size="small" type="warning" class="mr1">部分入住</el-tag>
+              <el-button v-if="row.status === 'reserved' && (row.pending_rooms ?? row.rooms ?? 1) > 0" link type="primary" size="small" @click="openCheckin(row)">
+                {{ row.checked_in_rooms > 0 ? '继续入住' : '入住' }}
+              </el-button>
+              <el-button v-if="row.status === 'reserved' && !(row.checked_in_rooms > 0)" link type="danger" size="small" @click="doCancel(row)">取消</el-button>
 
-            <el-button v-if="row.status === 'checked_in'" link type="danger" size="small" @click="openCheckout(row)">退房</el-button>
-            <el-button v-if="row.status === 'checked_in'" link type="primary" size="small" @click="openEdit(row)">续住</el-button>
-            <el-button v-if="row.status === 'checked_in'" link size="small" @click="openChangeRoom(row)">换房</el-button>
+              <el-button v-if="row.status === 'checked_in'" link type="danger" size="small" @click="openCheckout(row)">退房</el-button>
+              <el-button v-if="row.status === 'checked_in'" link type="primary" size="small" @click="openEdit(row)">续住</el-button>
+              <el-button v-if="row.status === 'checked_in'" link size="small" @click="openChangeRoom(row)">换房</el-button>
 
-            <el-button v-if="row.status === 'cancelled'" link type="success" size="small" @click="doRestore(row)">恢复预定</el-button>
-          </template>
-        </el-table-column>
+              <el-button v-if="row.status === 'cancelled'" link type="success" size="small" @click="doRestore(row)">恢复预定</el-button>
+            </template>
+          </el-table-column>
+        </template>
+
+        <!-- 在住/已退：一房一单 -->
+        <template v-else>
+          <el-table-column label="单号" width="150">
+            <template #default="{ row }">
+              <div class="order-no">{{ row.order_no }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="source" label="来源" width="70" />
+          <el-table-column label="外部订单号" min-width="120">
+            <template #default="{ row }">{{ row.source_order_no || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="房号" width="90">
+            <template #default="{ row }"><span class="room-nos">{{ row.room_no || '待排' }}</span></template>
+          </el-table-column>
+          <el-table-column label="子单状态" width="90" align="center">
+            <template #default="{ row }">
+              <el-tag size="small" :type="unitStatusMeta(row.unit_status).type">{{ unitStatusMeta(row.unit_status).text }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="房型" min-width="140">
+            <template #default="{ row }"><div class="type-desc">{{ roomTypeMap[Number(row.room_type_id)] || '未选房型' }}</div></template>
+          </el-table-column>
+          <el-table-column label="入住人" min-width="100">
+            <template #default="{ row }">
+              <div class="guest-name">{{ row.guest_name || '-' }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column label="联系电话" width="120">
+            <template #default="{ row }">{{ row.guest_phone || '-' }}</template>
+          </el-table-column>
+          <el-table-column prop="check_in_date" label="入住" width="100" />
+          <el-table-column prop="check_out_date" label="离店" width="100" />
+          <el-table-column v-if="isInHouse" label="当日房价" width="110" align="right">
+            <template #default="{ row }">{{ fmtMoney(todayRate(row)) }}</template>
+          </el-table-column>
+          <el-table-column v-else label="首日房价" width="110" align="right">
+            <template #default="{ row }">{{ fmtMoney(unitFirstRate(row)) }}</template>
+          </el-table-column>
+          <el-table-column v-if="status === 'checked_out'" label="总消费" width="100" align="right">
+            <template #default="{ row }"><span class="amt-out">−{{ fmtMoney(row.total_consume) }}</span></template>
+          </el-table-column>
+          <el-table-column label="操作" width="200">
+            <template #default="{ row }">
+              <el-button link type="info" size="small" @click="openRoomDetail(row)">详情</el-button>
+              <template v-if="row.unit_status === 'checked_in'">
+                <el-button link type="danger" size="small" @click="doRoomCheckout(row)">退房</el-button>
+                <el-button link type="primary" size="small" @click="openEdit(row)">续住</el-button>
+              </template>
+              <el-button link size="small" @click="openFolio(row)">账单</el-button>
+            </template>
+          </el-table-column>
+        </template>
       </el-table>
 
       <div class="pager">
@@ -102,9 +157,10 @@
     <ReservationForm v-model:visible="editVisible" mode="edit" :reservation="currentRes" @saved="onSaved" />
     <CheckInDialog v-model:visible="checkinVisible" :reservation="currentRes" @saved="onSaved" />
     <CheckOutDialog v-model:visible="checkoutVisible" :reservation="currentRes" @saved="onSaved" />
-    <ChangeRoomDialog v-model:visible="changeRoomVisible" :reservation="currentRes" @saved="onSaved" />
-    <OrderDetailDialog v-model:visible="detailVisible" :reservation-id="currentRes?.id" @changed="onSaved" />
+    <ChangeRoomDialog v-model:visible="changeRoomVisible" :reservation="currentRes" :unit-id="changeRoomUnitId" @saved="onSaved" />
+    <OrderDetailDialog v-model:visible="detailVisible" :reservation-id="currentRes?.id" :room-id="detailRoomId" :unit-id="detailUnitId" @changed="onSaved" />
     <RoomAssignDialog v-model:visible="assignVisible" :reservation="currentRes" @saved="onSaved" />
+    <FolioDialog v-model:visible="folioVisible" :reservation-id="folioReservationId" @changed="onSaved" />
   </div>
 </template>
 
@@ -113,13 +169,14 @@ import { ref, computed, onMounted } from 'vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import http from '../api';
 import { store } from '../store';
-import { fmtMoney } from '../utils/format';
+import { fmtMoney, fmtDate } from '../utils/format';
 import ReservationForm from '../components/ReservationForm.vue';
 import CheckInDialog from '../components/CheckInDialog.vue';
 import CheckOutDialog from '../components/CheckOutDialog.vue';
 import ChangeRoomDialog from '../components/ChangeRoomDialog.vue';
 import OrderDetailDialog from '../components/OrderDetailDialog.vue';
 import RoomAssignDialog from '../components/RoomAssignDialog.vue';
+import FolioDialog from '../components/FolioDialog.vue';
 
 const status = ref('reserved');
 const keyword = ref('');
@@ -137,7 +194,114 @@ const checkoutVisible = ref(false);
 const changeRoomVisible = ref(false);
 const detailVisible = ref(false);
 const assignVisible = ref(false);
+const detailRoomId = ref(null);
+const detailUnitId = ref(null);
+const folioVisible = ref(false);
+const folioReservationId = ref(null);
 const currentRes = ref(null);
+const changeRoomUnitId = ref(null);
+
+// 「在住/已退」tab：一房一单，把订单展开成逐间子单；同一订单的全部子单一起列出（含已退），
+// 「已预订/已取消」保持整单行
+const isInHouse = computed(() => status.value === 'checked_in');
+const isPerRoom = computed(() => status.value === 'checked_in' || status.value === 'checked_out');
+const UNIT_STATUS = {
+  pending: { text: '待入住', type: 'warning' },
+  checked_in: { text: '在住', type: 'success' },
+  checked_out: { text: '已退', type: 'info' },
+  no_show: { text: '未到', type: 'danger' },
+  cancelled: { text: '已取消', type: 'danger' },
+};
+const unitStatusMeta = (s) => UNIT_STATUS[s] || { text: s || '-', type: '' };
+const viewRows = computed(() => {
+  if (!isPerRoom.value) return list.value;
+  const rows = [];
+  for (const res of list.value) {
+    for (const u of (res.room_list || [])) {
+      rows.push({
+        isRoomRow: true,
+        unit_status: u.status,
+        _res: res,
+        _unit: u,
+        order_no: res.order_no,
+        source_order_no: res.source_order_no,
+        guest_name: u.guest_name || '',
+        guest_phone: u.guest_phone || '',
+        source: res.source,
+        room_type_id: u.room_type_id ?? res.room_type_id,
+        room_no: u.room_no,
+        rate: Number(u.rate) || 0,
+        check_in_date: (res.actual_check_in ? String(res.actual_check_in).slice(0, 10) : res.check_in_date),
+        check_out_date: u.actual_check_out || res.check_out_date,
+        total_amount: res.total_amount,
+        total_consume: res.total_consume,
+        status: res.status,
+      });
+    }
+  }
+  return rows;
+});
+
+// 同一预订单的多个子单：纵向合并「单号/来源/外部订单号」列，体现它们共用同一单号与来源
+const MERGE_COLUMNS = ['单号', '来源', '外部订单号'];
+function spanMethod({ row, column, rowIndex }) {
+  if (!isPerRoom.value || !MERGE_COLUMNS.includes(column.label)) return undefined;
+  const rows = viewRows.value;
+  const rid = row._res?.id;
+  if (rid == null) return undefined;
+  if (rowIndex > 0 && rows[rowIndex - 1]._res?.id === rid) return { rowspan: 0, colspan: 0 };
+  let rowspan = 1;
+  for (let i = rowIndex + 1; i < rows.length && rows[i]._res?.id === rid; i++) rowspan += 1;
+  return { rowspan, colspan: 1 };
+}
+
+// 线路的每晚价表：兼容 {date:price} JSON 字符串（现行存储）与 [{date,price}] 数组（旧数据）
+function lineRateMap(ln) {
+  if (!ln || ln.rates == null) return {};
+  if (Array.isArray(ln.rates)) {
+    const m = {};
+    ln.rates.forEach((x) => { if (x && x.date) m[x.date] = Number(x.price) || 0; });
+    return m;
+  }
+  try { return JSON.parse(ln.rates) || {}; } catch { return {}; }
+}
+
+function lineOfUnit(u, res) {
+  try {
+    const lines = JSON.parse(res.lines || '[]');
+    return lines[Number(u.line_index)] || lines[0] || {};
+  } catch {
+    return {};
+  }
+}
+
+// 当日房价：该间房价覆盖优先，其次今晚价表，再回退线路价
+function todayRate(row) {
+  const u = row._unit, res = row._res;
+  if (!u) return Number(row.rate) || 0;
+  if (Number(u.rate) > 0) return Number(u.rate);
+  const ln = lineOfUnit(u, res);
+  const map = lineRateMap(ln);
+  const t = fmtDate();
+  if (map[t] != null) return Number(map[t]) || 0;
+  const dates = Object.keys(map).sort();
+  if (dates.length) return Number(map[dates[0]]) || Number(ln.rate) || 0;
+  return Number(ln.rate) || Number(res.rate) || 0;
+}
+
+// 单间首日房价：该间房价覆盖优先，其次入住首晚价表，再回退线路价
+function unitFirstRate(row) {
+  const u = row._unit, res = row._res;
+  if (!u) return Number(row.rate) || 0;
+  if (Number(u.rate) > 0) return Number(u.rate);
+  const ln = lineOfUnit(u, res);
+  const map = lineRateMap(ln);
+  const d = (res.actual_check_in ? String(res.actual_check_in).slice(0, 10) : res.check_in_date);
+  if (map[d] != null) return Number(map[d]) || 0;
+  const dates = Object.keys(map).sort();
+  if (dates.length) return Number(map[dates[0]]) || 0;
+  return Number(ln.rate) || Number(res.rate) || 0;
+}
 
 // 房型名映射，用于「房型」列渲染多行房型
 const roomTypes = ref([]);
@@ -175,7 +339,11 @@ function firstRateDesc(row) {
   return parseLines(row)
     .map((ln) => {
       let p = Number(ln.rate) || 0;
-      if (!p && Array.isArray(ln.rates) && ln.rates.length) p = Number(ln.rates[0]?.price) || 0;
+      if (!p) {
+        const map = lineRateMap(ln);
+        const dates = Object.keys(map).sort();
+        if (dates.length) p = Number(map[dates[0]]) || 0;
+      }
       return fmtMoney(p);
     })
     .join('\n');
@@ -208,7 +376,7 @@ function openCreate() {
   createVisible.value = true;
 }
 function openEdit(row) {
-  currentRes.value = row;
+  currentRes.value = row.isRoomRow ? row._res : row;
   editVisible.value = true;
 }
 function openCheckin(row) {
@@ -216,20 +384,54 @@ function openCheckin(row) {
   checkinVisible.value = true;
 }
 function openCheckout(row) {
-  currentRes.value = row;
+  currentRes.value = row.isRoomRow ? row._res : row;
   checkoutVisible.value = true;
 }
 function openChangeRoom(row) {
-  currentRes.value = row;
+  currentRes.value = row.isRoomRow ? row._res : row;
+  changeRoomUnitId.value = row.isRoomRow ? row._unit.id : null;
   changeRoomVisible.value = true;
 }
 function openDetail(row) {
   currentRes.value = row;
+  detailRoomId.value = null;
+  detailUnitId.value = null;
   detailVisible.value = true;
+}
+function openRoomDetail(row) {
+  currentRes.value = row._res;
+  detailRoomId.value = row._unit.room_id;
+  detailUnitId.value = row._unit.id;
+  detailVisible.value = true;
+}
+function openFolio(row) {
+  folioReservationId.value = (row.isRoomRow ? row._res : row).id;
+  folioVisible.value = true;
 }
 function openAssign(row) {
   currentRes.value = row;
   assignVisible.value = true;
+}
+
+// 单间退房：仅剩这一间在住且无待入住子单时走整单结算；否则单间退房、其余子单继续
+async function doRoomCheckout(row) {
+  const res = row._res;
+  const unit = row._unit;
+  const rooms = res.room_list || [];
+  const checkedInCount = rooms.filter((x) => x.status === 'checked_in').length;
+  const pendingCount = rooms.filter((x) => x.status === 'pending').length;
+  if (checkedInCount <= 1 && pendingCount === 0) {
+    currentRes.value = res;
+    checkoutVisible.value = true;
+    return;
+  }
+  try {
+    await ElMessageBox.confirm(`确认房间 ${unit.room_no || '该房'} 结账退房？其余房间继续在住，共用同一账单。`, '提示', { type: 'warning' });
+  } catch (e) { return; }
+  await http.post(`/reservations/${res.id}/rooms/${unit.id}/check-out`, { actual_check_out: fmtDate() });
+  ElMessage.success('该房间已退房');
+  await load();
+  store.loadStats();
 }
 
 // 房号列：仅展示已排房的房号
@@ -275,6 +477,7 @@ onMounted(() => { loadRoomTypes(); load(); });
 .guest-name { font-weight: 600; color: #212529; }
 .type-desc { white-space: pre-line; line-height: 1.5; }
 .room-cell { display: flex; align-items: center; gap: 6px; }
+.mr1 { margin-right: 4px; }
 .room-nos { color: #303133; }
 .pager { display: flex; justify-content: flex-end; margin-top: 14px; }
 </style>

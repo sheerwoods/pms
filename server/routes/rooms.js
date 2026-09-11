@@ -91,15 +91,17 @@ router.get('/room-status', wrap((req, res) => {
                    FROM rooms r LEFT JOIN room_types t ON t.id=r.type_id
                    ORDER BY r.floor, r.room_no`);
   // 按每间状态驱动（分批入住）：rr.status=checked_in → 占；pending 且已分配房 → 预抵
+  // 终态父单（已取消/未到/已退）不出现在房态图上
   const inHouse = q(
-    `SELECT r.*, rr.room_id AS assigned_room_id FROM reservations r
+    `SELECT r.*, rr.room_id AS assigned_room_id, rr.id AS unit_id, rr.status AS unit_status FROM reservations r
      JOIN reservation_rooms rr ON rr.reservation_id=r.id
-     WHERE rr.status='checked_in' AND rr.room_id IS NOT NULL`
+     WHERE rr.status='checked_in' AND rr.room_id IS NOT NULL AND r.status NOT IN ('cancelled','no_show','checked_out')`
   );
   const expected = q(
-    `SELECT r.*, rr.room_id AS assigned_room_id FROM reservations r
+    `SELECT r.*, rr.room_id AS assigned_room_id, rr.id AS unit_id, rr.status AS unit_status FROM reservations r
      JOIN reservation_rooms rr ON rr.reservation_id=r.id
-     WHERE rr.status='pending' AND rr.room_id IS NOT NULL AND r.check_in_date <= ? AND r.check_out_date > ?`,
+     WHERE rr.status='pending' AND rr.room_id IS NOT NULL AND r.check_in_date <= ? AND r.check_out_date > ?
+       AND r.status NOT IN ('cancelled','no_show','checked_out')`,
     date, date
   );
   // 兼容旧的、无子行的预订（按 reservations.status + room_id 回退）
@@ -113,10 +115,34 @@ router.get('/room-status', wrap((req, res) => {
     date, date
   );
 
+  // 父单的子单统计（供前端按派生状态判断，不再依赖父 status 猜占用）
+  const allIds = [...new Set([...inHouse, ...expected, ...legacyIn, ...legacyExp].map((x) => x.id))];
+  const countMap = {};
+  if (allIds.length) {
+    const ph = allIds.map(() => '?').join(',');
+    for (const c of q(
+      `SELECT reservation_id,
+              COALESCE(SUM(CASE WHEN status='checked_in' THEN 1 ELSE 0 END),0) AS cin,
+              COALESCE(SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END),0) AS pend
+       FROM reservation_rooms WHERE reservation_id IN (${ph}) GROUP BY reservation_id`,
+      ...allIds
+    )) countMap[c.reservation_id] = { cin: c.cin, pend: c.pend };
+  }
+  const decorate = (x, fallback) => {
+    const c = countMap[x.id] || fallback;
+    x.checked_in_units = c.cin;
+    x.pending_units = c.pend;
+    x.has_checked_in = c.cin > 0;
+    x.unit_status = x.unit_status || (fallback.cin > 0 ? 'checked_in' : 'pending');
+    return x;
+  };
+
   const byRoomIn = {};
   const byRoomExp = {};
-  [...inHouse, ...legacyIn].forEach((x) => { const room = x.assigned_room_id || x.room_id; if (room) byRoomIn[room] = x; });
-  [...expected, ...legacyExp].forEach((x) => { const room = x.assigned_room_id || x.room_id; if (room) byRoomExp[room] = x; });
+  [...inHouse.map((x) => decorate(x, { cin: 1, pend: 0 })), ...legacyIn.map((x) => decorate(x, { cin: 1, pend: 0 }))]
+    .forEach((x) => { const room = x.assigned_room_id || x.room_id; if (room) byRoomIn[room] = x; });
+  [...expected.map((x) => decorate(x, { cin: 0, pend: 1 })), ...legacyExp.map((x) => decorate(x, { cin: 0, pend: 1 }))]
+    .forEach((x) => { const room = x.assigned_room_id || x.room_id; if (room) byRoomExp[room] = x; });
 
   const result = rooms.map((room) => {
     const item = { room, eff_status: '', reservation: null, balance: null };

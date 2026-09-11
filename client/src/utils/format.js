@@ -42,8 +42,6 @@ export const RES_STATUS = {
   no_show: { text: '未到', type: 'danger' },
 };
 
-export const PAY_METHODS = ['现金', '银行卡', '微信', '支付宝', '挂账'];
-
-export const RES_SOURCES = ['散客', '美团', '携程', '飞猪', '京东', '小程序'];
+// 收款方式 / 客源渠道等下拉候选已迁至 utils/dict.js（系统设置页维护）
 
 export const ROOM_KINDS = ['全日房', '钟点房'];

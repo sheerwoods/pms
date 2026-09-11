@@ -5,6 +5,7 @@ const express = require('express');
 const { AppError } = require('./errors');
 
 require('./db');
+const nightAudit = require('./nightAudit');
 
 const app = express();
 app.use(express.json());
@@ -21,7 +22,10 @@ app.use((req, res, next) => {
 app.use('/api', require('./routes/rooms'));
 app.use('/api', require('./routes/reservations'));
 app.use('/api', require('./routes/finance'));
+app.use('/api', require('./routes/ar'));
 app.use('/api', require('./routes/stats'));
+app.use('/api', require('./routes/night_audit'));
+app.use('/api', require('./routes/settings'));
 
 // API 404
 app.use('/api', (req, res) => res.status(404).json({ error: '接口不存在' }));
@@ -39,6 +43,9 @@ app.use((err, req, res, next) => {
   if (status === 500) console.error(err);
   res.status(status).json({ error: err.message || '服务器错误' });
 });
+
+// 启动夜审定时检查
+nightAudit.startScheduler();
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`✅ PMS 服务已启动: http://localhost:${PORT}`));

@@ -8,7 +8,7 @@
   >
     <el-form :model="form" label-width="90px">
       <el-form-item label="当前房间">
-        <el-input :model-value="`${reservation?.room_no}（${reservation?.type_name}）`" disabled />
+        <el-input :model-value="currentRoomText" disabled />
       </el-form-item>
       <el-form-item label="新房间" required>
         <el-select v-model="form.new_room_id" placeholder="请选择新房间" style="width: 100%">
@@ -34,6 +34,7 @@ import http from '../api';
 const props = defineProps({
   visible: Boolean,
   reservation: { type: Object, default: null },
+  unitId: { type: [Number, String], default: null }, // 要更换的房间子单（多间订单）
 });
 const emit = defineEmits(['update:visible', 'saved']);
 
@@ -41,8 +42,21 @@ const availableRooms = ref([]);
 const saving = ref(false);
 const form = ref({ new_room_id: null, reason: '' });
 
+// 目标子单：显式 unitId 优先，否则回退订单首间
+const targetUnit = computed(() => {
+  const list = props.reservation?.room_list || [];
+  if (props.unitId != null) return list.find((u) => Number(u.id) === Number(props.unitId)) || null;
+  return list.find((u) => u.status === 'checked_in') || null;
+});
+const currentRoomId = computed(() => targetUnit.value?.room_id ?? props.reservation?.room_id);
+const currentRoomText = computed(() => {
+  const u = targetUnit.value;
+  const no = u?.room_no || props.reservation?.room_no || '-';
+  return `${no}（${props.reservation?.type_name || '-'}）`;
+});
+
 const roomOptions = computed(() =>
-  availableRooms.value.filter((r) => r.id !== props.reservation?.room_id)
+  availableRooms.value.filter((r) => r.id !== currentRoomId.value)
 );
 
 watch(
@@ -58,7 +72,10 @@ async function confirm() {
   if (!form.value.new_room_id) return ElMessage.warning('请选择新房间');
   saving.value = true;
   try {
-    await http.post(`/reservations/${props.reservation.id}/change-room`, form.value);
+    await http.post(`/reservations/${props.reservation.id}/change-room`, {
+      ...form.value,
+      unit_id: targetUnit.value?.id ?? null,
+    });
     ElMessage.success('换房成功');
     emit('saved');
     emit('update:visible', false);

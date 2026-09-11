@@ -43,4 +43,19 @@ function round2(n) {
   return Math.round((Number(n) || 0) * 100) / 100;
 }
 
-module.exports = { fmt, today, now, addDays, nightsBetween, genOrderNo, round2 };
+// 'HH:MM' -> 分钟数
+function timeToMinutes(hhmm, def = 0) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || ''));
+  if (!m) return def;
+  return (Number(m[1]) || 0) * 60 + (Number(m[2]) || 0);
+}
+
+// 交易时间 'YYYY-MM-DD HH:MM:SS' 归属营业日：>= 夜审时间取当日，否则取前一日
+function businessDateOf(ts, auditMinutes = 0) {
+  const s = String(ts || '').slice(0, 10);
+  if (!s) return today();
+  const min = timeToMinutes(String(ts || '').slice(11, 16), 0);
+  return min >= auditMinutes ? s : addDays(s, -1);
+}
+
+module.exports = { fmt, today, now, addDays, nightsBetween, genOrderNo, round2, timeToMinutes, businessDateOf };

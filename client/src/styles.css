@@ -26,7 +26,9 @@ html, body, #app {
 .header .logo { display: flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 700; letter-spacing: 1px; color: #1c7ed6; }
 .header .logo span { color: #212529; }
 .header .top-menu { border-bottom: none; }
+.header .header-right { display: flex; align-items: center; gap: 18px; }
 .header .today-stats { display: flex; gap: 22px; }
+.header .na-trigger { font-size: 14px; color: #1c7ed6; display: inline-flex; align-items: center; gap: 4px; }
 .header .stat { font-size: 13px; color: #868e96; display: flex; align-items: center; gap: 4px; }
 .header .stat .num { font-size: 17px; font-weight: 700; color: #343a40; }
 .header .stat .num.blue { color: #1c7ed6; }
@@ -43,5 +45,17 @@ html, body, #app {
 .toolbar-card { margin-bottom: 14px; }
 .toolbar-card .el-card__body { padding: 12px 16px; }
 
-.money-pos { color: #e03131; font-weight: 600; }
-.money-neg { color: #2f9e44; font-weight: 600; }
+/* 账务统一口径：收款/押金收取=红 +，消费/退款/退还押金=绿 − */
+.amt-in { color: #e03131; font-weight: 600; }   /* 入账（红） */
+.amt-out { color: #2f9e44; font-weight: 600; }  /* 出账/消费（绿） */
+.amt-zero { color: #868e96; font-weight: 600; }
+.bal-credit { color: #e03131; font-weight: 700; } /* 应退客人（红） */
+.bal-due { color: #2f9e44; font-weight: 700; }    /* 客人欠款（绿） */
+.bal-settled { color: #868e96; font-weight: 700; }
+
+/* 夜审弹层 */
+.na-panel { display: flex; flex-direction: column; gap: 10px; }
+.na-head { font-size: 15px; font-weight: 700; color: #212529; }
+.na-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: #495057; }
+.na-label { color: #868e96; }
+.na-val { font-weight: 600; color: #343a40; }

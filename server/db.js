@@ -2,7 +2,7 @@
 const path = require('path');
 const fs = require('fs');
 const { DatabaseSync } = require('node:sqlite');
-const { fmt, addDays, nightsBetween, genOrderNo, round2 } = require('./utils');
+const { fmt, addDays, nightsBetween, genOrderNo, round2, timeToMinutes, businessDateOf } = require('./utils');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -77,7 +77,69 @@ function initSchema() {
       description TEXT DEFAULT '',
       amount REAL NOT NULL,          -- 正=应收增加(消费) 负=应收减少(付款/收款)
       method TEXT DEFAULT '',
+      room_unit_id INTEGER REFERENCES reservation_rooms(id),  -- 房费明细归属的房间单元
+      business_date TEXT,            -- 营业日（房费=该晚日期；其余按夜审时间切分）
+      settle_status TEXT NOT NULL DEFAULT 'open',  -- open / partial / settled / ar
       created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+    CREATE TABLE IF NOT EXISTS city_ledger (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reservation_id INTEGER REFERENCES reservations(id),
+      guest_id INTEGER REFERENCES guests(id),
+      guest_name TEXT DEFAULT '',
+      company TEXT DEFAULT '',                 -- 挂账单位
+      amount REAL NOT NULL DEFAULT 0,          -- 挂账金额
+      settled_amount REAL NOT NULL DEFAULT 0,  -- 已核销金额
+      status TEXT NOT NULL DEFAULT 'open',     -- open / settled
+      settled_at TEXT,
+      settled_method TEXT DEFAULT '',
+      remark TEXT DEFAULT '',
+      business_date TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+    CREATE TABLE IF NOT EXISTS ar_accounts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT UNIQUE,                        -- 账户编号（可空，插入后回填 AR0001）
+      name TEXT NOT NULL,                      -- 账户名称（公司/协议单位）
+      contact TEXT DEFAULT '',
+      phone TEXT DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'active',   -- active / disabled
+      remark TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+    CREATE TABLE IF NOT EXISTS ar_receipts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ar_account_id INTEGER NOT NULL REFERENCES ar_accounts(id),
+      amount REAL NOT NULL DEFAULT 0,          -- 本次回款总额
+      method TEXT DEFAULT '',
+      remark TEXT DEFAULT '',
+      business_date TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+    CREATE TABLE IF NOT EXISTS ar_allocations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      receipt_id INTEGER NOT NULL REFERENCES ar_receipts(id),
+      entry_id INTEGER NOT NULL REFERENCES city_ledger(id),
+      amount REAL NOT NULL DEFAULT 0           -- 本回款对该明细的核销额
+    );
+    CREATE TABLE IF NOT EXISTS folio_settlements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reservation_id INTEGER NOT NULL REFERENCES reservations(id),
+      kind TEXT NOT NULL DEFAULT 'settle',     -- settle（结账）/ ar（挂账）
+      ar_account_id INTEGER REFERENCES ar_accounts(id),
+      city_ledger_id INTEGER,                  -- kind=ar 时对应的应收明细
+      amount REAL NOT NULL DEFAULT 0,          -- 本次结账合计（单边）
+      remark TEXT DEFAULT '',
+      business_date TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      revoked_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS folio_allocations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      settlement_id INTEGER NOT NULL REFERENCES folio_settlements(id),
+      item_id INTEGER NOT NULL REFERENCES folio_items(id),
+      side TEXT NOT NULL,                      -- charge（消费侧）/ payment（收款侧）
+      amount REAL NOT NULL DEFAULT 0           -- 本次分配额
     );
     CREATE TABLE IF NOT EXISTS reservation_rooms (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,15 +151,42 @@ function initSchema() {
       guest_id_card TEXT DEFAULT '',
       guest_phone TEXT DEFAULT '',
       cohabitors TEXT DEFAULT '[]',
+      rate REAL NOT NULL DEFAULT 0,         -- 该间房入住房价覆盖（0=用线路价）
+      actual_check_out TEXT,                -- 该间房实际离店日
       status TEXT NOT NULL DEFAULT 'pending',  -- pending / checked_in / checked_out
       created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
+    CREATE TABLE IF NOT EXISTS dict_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL,                     -- charge_category / payment_category / payment_method / source
+      name TEXT NOT NULL,
+      sort_order INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'active',           -- active / disabled
+      system INTEGER DEFAULT 0,               -- 1=系统内置，不可删除/改名
+      remark TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      UNIQUE(kind, name)
     );
     CREATE INDEX IF NOT EXISTS idx_res_status ON reservations(status);
     CREATE INDEX IF NOT EXISTS idx_res_room ON reservations(room_id, status);
     CREATE INDEX IF NOT EXISTS idx_folio_res ON folio_items(reservation_id);
+    CREATE INDEX IF NOT EXISTS idx_ledger_status ON city_ledger(status);
+    CREATE INDEX IF NOT EXISTS idx_ledger_res ON city_ledger(reservation_id);
+    CREATE INDEX IF NOT EXISTS idx_alloc_entry ON ar_allocations(entry_id);
+    CREATE INDEX IF NOT EXISTS idx_alloc_receipt ON ar_allocations(receipt_id);
+    CREATE INDEX IF NOT EXISTS idx_folio_alloc_settle ON folio_allocations(settlement_id);
+    CREATE INDEX IF NOT EXISTS idx_folio_alloc_item ON folio_allocations(item_id);
+    CREATE INDEX IF NOT EXISTS idx_folio_settle_res ON folio_settlements(reservation_id, kind);
     CREATE INDEX IF NOT EXISTS idx_res_room_res ON reservation_rooms(reservation_id);
     CREATE INDEX IF NOT EXISTS idx_res_room_room ON reservation_rooms(room_id);
   `);
+
+  // 默认系统设置：夜审时间（HH:MM）
+  run("INSERT OR IGNORE INTO settings (key, value) VALUES ('night_audit_time', '06:00')");
 
   // 旧库升级：为已存在的 reservations 表补充新字段
   const resCols = q('PRAGMA table_info(reservations)').map((c) => c.name);
@@ -111,6 +200,115 @@ function initSchema() {
   // residence_rooms 状态列（分批入住）
   const rrCols = q('PRAGMA table_info(reservation_rooms)').map((c) => c.name);
   if (!rrCols.includes('status')) run("ALTER TABLE reservation_rooms ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'");
+  if (!rrCols.includes('rate')) run('ALTER TABLE reservation_rooms ADD COLUMN rate REAL NOT NULL DEFAULT 0');
+  if (!rrCols.includes('actual_check_out')) run('ALTER TABLE reservation_rooms ADD COLUMN actual_check_out TEXT');
+
+  // folio_items 房费明细房间归属（单间退房对账）
+  const fiCols = q('PRAGMA table_info(folio_items)').map((c) => c.name);
+  if (!fiCols.includes('room_unit_id')) run('ALTER TABLE folio_items ADD COLUMN room_unit_id INTEGER REFERENCES reservation_rooms(id)');
+  // folio_items 营业日
+  if (!fiCols.includes('business_date')) run('ALTER TABLE folio_items ADD COLUMN business_date TEXT');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_folio_bdate ON folio_items(business_date)');
+  // folio_items 逐笔结账状态（open / partial / settled / ar，明细见 folio_allocations）
+  if (!fiCols.includes('settle_status')) run("ALTER TABLE folio_items ADD COLUMN settle_status TEXT NOT NULL DEFAULT 'open'");
+  db.exec('CREATE INDEX IF NOT EXISTS idx_folio_settle_status ON folio_items(settle_status)');
+
+  // city_ledger 归属 AR 账户 + 关联 folio 付款（追溯/护栏）
+  const clCols = q('PRAGMA table_info(city_ledger)').map((c) => c.name);
+  if (!clCols.includes('ar_account_id')) run('ALTER TABLE city_ledger ADD COLUMN ar_account_id INTEGER');
+  if (!clCols.includes('folio_item_id')) run('ALTER TABLE city_ledger ADD COLUMN folio_item_id INTEGER');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_ledger_account ON city_ledger(ar_account_id, status)');
+
+  migrateArAccounts();
+  migrateFolioSettlements();
+}
+
+// 客账逐笔结账迁移（幂等）：历史「挂账」付款行按其金额冲抵本单消费，补齐 AR 结账批次
+// 状态口径见 settlement.js 的 STATUS_SQL：0=未结账 / 全额且含 AR=挂AR / 全额=已结账 / 其余=部分结账
+function migrateFolioSettlements() {
+  for (const pay of q("SELECT * FROM folio_items WHERE item_type='payment' AND method='挂账' ORDER BY id")) {
+    const done = Math.round((get('SELECT COALESCE(SUM(amount),0) AS s FROM folio_allocations WHERE item_id=?', pay.id).s || 0) * 100);
+    let left = Math.round(Math.abs(Number(pay.amount)) * 100) - done;
+    if (left <= 0) continue;
+    const ledger = get('SELECT * FROM city_ledger WHERE folio_item_id=?', pay.id);
+    const sid = Number(run(
+      `INSERT INTO folio_settlements (reservation_id, kind, ar_account_id, city_ledger_id, amount, remark, business_date, created_at)
+       VALUES (?,?,?,?,?,?,?,?)`,
+      pay.reservation_id, 'ar', ledger ? ledger.ar_account_id : null, ledger ? ledger.id : null,
+      left / 100, '历史挂账迁移', ledger ? ledger.business_date : null, pay.created_at
+    ).lastInsertRowid);
+    run('INSERT INTO folio_allocations (settlement_id, item_id, side, amount) VALUES (?,?,?,?)', sid, pay.id, 'payment', left / 100);
+    // 冲抵本单消费（最早优先）
+    for (const c of q("SELECT * FROM folio_items WHERE reservation_id=? AND item_type IN ('room_charge','extra_charge','adj') AND amount > 0 ORDER BY id", pay.reservation_id)) {
+      if (left <= 0) break;
+      const used = Math.round((get('SELECT COALESCE(SUM(amount),0) AS s FROM folio_allocations WHERE item_id=?', c.id).s || 0) * 100);
+      const take = Math.min(Math.round(Number(c.amount) * 100) - used, left);
+      if (take <= 0) continue;
+      run('INSERT INTO folio_allocations (settlement_id, item_id, side, amount) VALUES (?,?,?,?)', sid, c.id, 'charge', take / 100);
+      left -= take;
+    }
+    run("UPDATE folio_items SET settle_status='ar' WHERE id=?", pay.id);
+  }
+  // 重算有分配的行状态（历史无分配的行保持 open，退房时自动整单结账）
+  for (const r of q(`SELECT f.id, f.amount,
+                            COALESCE(SUM(al.amount),0) AS allocated,
+                            COALESCE(SUM(CASE WHEN s.kind='ar' THEN al.amount ELSE 0 END),0) AS ar_alloc
+                     FROM folio_items f
+                     JOIN folio_allocations al ON al.item_id=f.id
+                     JOIN folio_settlements s ON s.id=al.settlement_id
+                     GROUP BY f.id`)) {
+    const cap = Math.abs(Number(r.amount));
+    const status = r.allocated < 0.005 ? 'open'
+      : (r.allocated >= cap - 0.005 ? (r.ar_alloc > 0.005 ? 'ar' : 'settled') : 'partial');
+    run('UPDATE folio_items SET settle_status=? WHERE id=?', status, r.id);
+  }
+}
+
+// AR 迁移（幂等）：历史自由文本挂账归入默认账户；尽力回填 folio_item_id
+function migrateArAccounts() {
+  const orphans = get('SELECT COUNT(*) AS c FROM city_ledger WHERE ar_account_id IS NULL').c;
+  if (orphans > 0) {
+    run("INSERT OR IGNORE INTO ar_accounts (code, name, remark) VALUES ('HIST','历史挂账','系统迁移的历史挂账单位')");
+    const hist = get("SELECT id FROM ar_accounts WHERE code='HIST'");
+    if (hist) {
+      run("UPDATE city_ledger SET ar_account_id=?, company=COALESCE(NULLIF(company,''),'历史挂账') WHERE ar_account_id IS NULL", hist.id);
+    }
+  }
+  // 仅当同额挂账付款唯一时才关联，避免误连
+  run(`UPDATE city_ledger SET folio_item_id = (
+         SELECT f.id FROM folio_items f
+         WHERE f.reservation_id = city_ledger.reservation_id
+           AND f.method='挂账' AND ABS(f.amount + city_ledger.amount) < 0.005
+         LIMIT 1)
+       WHERE ar_account_id IS NOT NULL AND folio_item_id IS NULL
+         AND (SELECT COUNT(*) FROM folio_items f
+              WHERE f.reservation_id = city_ledger.reservation_id
+                AND f.method='挂账' AND ABS(f.amount + city_ledger.amount) < 0.005) = 1`);
+}
+
+// 回填历史流水的营业日（幂等；须在 seed / backfillReservationRooms 之后执行）
+//   房费：描述 房费(YYYY-MM-DD) -> 取该晚日期
+//   其余：按 created_at 依夜审时间切分
+function backfillBusinessDates() {
+  const rows = q('SELECT id, item_type, description, created_at FROM folio_items WHERE business_date IS NULL');
+  if (!rows.length) return;
+  const auditMin = timeToMinutes(get("SELECT value FROM settings WHERE key='night_audit_time'")?.value, 6 * 60);
+  db.exec('BEGIN');
+  try {
+    for (const r of rows) {
+      let bd = null;
+      if (r.item_type === 'room_charge') {
+        const m = /房费\((\d{4}-\d{2}-\d{2})\)/.exec(r.description || '');
+        if (m) bd = m[1];
+      }
+      if (!bd) bd = businessDateOf(r.created_at, auditMin);
+      run('UPDATE folio_items SET business_date=? WHERE id=?', bd, r.id);
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
 }
 
 // 展开为逐间单元：每个 房型行 × 每间 一条，携带行下标与房型
@@ -223,7 +421,7 @@ function seed() {
         (order_no, guest_id, guest_name, guest_phone, room_type_id, room_id,
          check_in_date, check_out_date, nights, adults, rate, rooms, total_amount,
          status, booking_type, source, source_order_no, rates, actual_check_in, actual_check_out)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       genOrderNo(), gid[gi], guestRows[gi][0], guestRows[gi][1], typeId[typeIdx], rid[roomNo],
       ci, checkout, nights, 1, rate, rooms, total, status, booking_type, source, sourceOrderNo, ratesJson, aci, aco
     ).lastInsertRowid);
@@ -278,8 +476,28 @@ function seed() {
   console.log('[db] 已写入种子数据');
 }
 
+// 字典默认项：仅在首次建库时播种（避免用户删除后重启复活）
+function seedDicts() {
+  if (get("SELECT value FROM settings WHERE key='dicts_seeded'")) return;
+  const rows = [
+    ['charge_category', '迷你吧', 1, 0], ['charge_category', '洗衣', 2, 0], ['charge_category', '电话', 3, 0],
+    ['charge_category', '赔偿', 4, 0], ['charge_category', '早餐', 5, 0], ['charge_category', '其他', 6, 0],
+    ['payment_category', '房费', 1, 0], ['payment_category', '杂费', 2, 0], ['payment_category', '预付', 3, 0],
+    ['payment_method', '现金', 1, 0], ['payment_method', '银行卡', 2, 0], ['payment_method', '微信', 3, 0],
+    ['payment_method', '支付宝', 4, 0], ['payment_method', '挂账', 5, 1],
+    ['source', '散客', 1, 0], ['source', '美团', 2, 0], ['source', '携程', 3, 0],
+    ['source', '飞猪', 4, 0], ['source', '京东', 5, 0], ['source', '小程序', 6, 0],
+  ];
+  for (const [kind, name, sort, system] of rows) {
+    run('INSERT OR IGNORE INTO dict_items (kind, name, sort_order, system) VALUES (?,?,?,?)', kind, name, sort, system);
+  }
+  run("INSERT OR IGNORE INTO settings (key, value) VALUES ('dicts_seeded', '1')");
+}
+
 initSchema();
+seedDicts();
 seed();
 backfillReservationRooms();
+backfillBusinessDates();
 
 module.exports = { db, q, get, run };

@@ -67,78 +67,55 @@
             :key="item.room.id"
             class="room-card"
             :style="cardStyle(item)"
-            @click="openDetail(item)"
+            @click="openDetail(item, $event)"
           >
-            <span class="status-dot" :style="{ background: ROOM_STATUS[item.eff_status].color }"></span>
-            <div class="room-no">{{ item.room.room_no }}</div>
-            <div class="room-type">{{ item.room.type_name }}</div>
-            <div class="room-guest">{{ guestText(item) }}</div>
-            <div class="room-date">{{ dateText(item) }}</div>
-            <span class="room-status-text" :style="{ color: ROOM_STATUS[item.eff_status].color }">
-              {{ ROOM_STATUS[item.eff_status].text }}
+            <div class="card-top">
+              <span class="room-no">{{ item.room.room_no }}</span>
+              <span v-if="channelBadge(item)" class="channel-tag">{{ channelBadge(item) }}</span>
+            </div>
+            <template v-if="item.reservation">
+              <div class="room-type">{{ item.room.type_name }}</div>
+              <div class="room-guest">{{ guestText(item) }}</div>
+              <div class="card-badges">
+                <span v-for="b in badges(item)" :key="b.key" class="badge" :class="b.cls">{{ b.text }}</span>
+              </div>
+            </template>
+            <span class="room-status-text" :style="{ color: statusMeta(item).color }">
+              {{ statusMeta(item).text }}
             </span>
           </div>
         </div>
       </el-card>
-      <el-empty v-if="!visibleFloors.length" description="暂无房间" />
+      <div v-if="!visibleFloors.length" class="empty-state">
+        <el-empty :description="loadFailed ? '数据加载失败' : '暂无房间'" />
+        <el-button v-if="loadFailed" type="primary" plain @click="load">重试</el-button>
+      </div>
     </div>
 
-    <!-- 房间详情对话框 -->
-    <el-dialog v-model="detailVisible" :title="detailTitle" width="440px">
-      <template v-if="detailItem">
-        <el-descriptions :column="2" border size="small">
-          <el-descriptions-item label="房号">{{ detailItem.room.room_no }}</el-descriptions-item>
-          <el-descriptions-item label="状态">{{ ROOM_STATUS[detailItem.eff_status].text }}</el-descriptions-item>
-          <el-descriptions-item label="房型">{{ detailItem.room.type_name }}</el-descriptions-item>
-          <el-descriptions-item label="门市价">{{ fmtMoney(detailItem.room.type_price) }}</el-descriptions-item>
-        </el-descriptions>
-
-        <template v-if="detailItem.reservation">
-          <el-divider content-position="left">当前预定</el-divider>
-          <el-descriptions :column="2" border size="small">
-            <el-descriptions-item label="客人">{{ detailItem.reservation.guest_name }}</el-descriptions-item>
-            <el-descriptions-item label="单号">{{ detailItem.reservation.order_no }}</el-descriptions-item>
-            <el-descriptions-item label="入住">{{ detailItem.reservation.check_in_date }}</el-descriptions-item>
-            <el-descriptions-item label="离店">{{ detailItem.reservation.check_out_date }}</el-descriptions-item>
-            <el-descriptions-item label="间夜">{{ detailItem.reservation.nights }}</el-descriptions-item>
-            <el-descriptions-item label="首日房价">{{ fmtMoney(detailItem.reservation.rate) }}</el-descriptions-item>
-            <template v-if="detailItem.reservation.status === 'checked_in'">
-              <el-descriptions-item label="账单余额">
-                <b :class="detailItem.balance > 0 ? 'money-pos' : detailItem.balance < 0 ? 'money-neg' : ''">
-                  {{ fmtMoney(detailItem.balance) }}
-                </b>
-              </el-descriptions-item>
-              <el-descriptions-item label="订单来源">{{ detailItem.reservation.source }}</el-descriptions-item>
-            </template>
-          </el-descriptions>
-        </template>
-
-        <div class="detail-actions">
-          <template v-if="detailItem.reservation && detailItem.reservation.status === 'checked_in'">
-            <el-button type="danger" @click="doCheckout">退房</el-button>
-            <el-button type="primary" @click="openEdit">续住/改单</el-button>
-            <el-button @click="openChangeRoom">换房</el-button>
-            <el-button @click="openFolio">账单</el-button>
-          </template>
-          <template v-else-if="detailItem.reservation && detailItem.reservation.status === 'reserved'">
-            <el-button type="primary" @click="doCheckin">办理入住</el-button>
-            <el-button @click="openEdit">改单</el-button>
-            <el-button @click="openFolio">账单</el-button>
-          </template>
-          <template v-else-if="['vacant_clean', 'vacant_dirty'].includes(detailItem.eff_status)">
-            <el-button type="primary" @click="openBooking">预订</el-button>
-            <el-button type="success" @click="openWalkin">散客入住</el-button>
-            <el-button v-if="detailItem.room.status === 'dirty'" @click="setHouseStatus('clean')">设为干净</el-button>
-            <el-button v-if="detailItem.room.status === 'clean'" @click="setHouseStatus('dirty')">设为脏</el-button>
-            <el-button type="warning" @click="setHouseStatus('ooo')">维修封房</el-button>
-          </template>
-          <template v-else-if="detailItem.eff_status === 'ooo'">
-            <el-button @click="setHouseStatus('clean')">解封(干净)</el-button>
-            <el-button @click="setHouseStatus('dirty')">解封(脏)</el-button>
-          </template>
-        </div>
-      </template>
-    </el-dialog>
+    <!-- 点击房态旁弹出的详情气泡框 -->
+    <div
+      v-if="bubbleVisible && detailItem"
+      ref="bubbleRef"
+      class="room-bubble"
+      :class="{ flip: bubblePos.flip }"
+      :style="{ left: bubblePos.left, top: bubblePos.top }"
+    >
+      <i class="bubble-tail"></i>
+      <RoomDetailPanel
+        :item="detailItem"
+        :summary="detailSummary"
+        @close="closeDetail"
+        @checkout="doCheckout"
+        @edit="openEdit"
+        @change-room="openChangeRoom"
+        @folio="openFolio"
+        @checkin="doCheckin"
+        @book="openBooking"
+        @walkin="openWalkin"
+        @set-house-status="setHouseStatus"
+        @open-order="openOrder"
+      />
+    </div>
 
     <!-- 子对话框 -->
     <ReservationForm v-model:visible="bookingVisible" mode="create" :initial="initialForm" @saved="onSaved" />
@@ -146,22 +123,26 @@
     <ReservationForm v-model:visible="editVisible" mode="edit" :reservation="currentRes" @saved="onSaved" />
     <CheckInDialog v-model:visible="checkinVisible" :reservation="currentRes" @saved="onSaved" />
     <CheckOutDialog v-model:visible="checkoutVisible" :reservation="currentRes" @saved="onSaved" />
-    <ChangeRoomDialog v-model:visible="changeRoomVisible" :reservation="currentRes" @saved="onSaved" />
+    <ChangeRoomDialog v-model:visible="changeRoomVisible" :reservation="currentRes" :unit-id="currentUnitId" @saved="onSaved" />
     <FolioDialog v-model:visible="folioVisible" :reservation-id="currentRes?.id" @changed="onSaved" />
+    <OrderDetailDialog v-model:visible="orderDetailVisible" :reservation-id="currentOrderId" :room-id="currentRoomId" @changed="onSaved" />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
+import { Fold, Expand, Search } from '@element-plus/icons-vue';
 import http from '../api';
 import { store } from '../store';
-import { fmtDate, fmtMoney, ROOM_STATUS } from '../utils/format';
+import { fmtDate, nightsBetween, ROOM_STATUS } from '../utils/format';
 import ReservationForm from '../components/ReservationForm.vue';
 import CheckInDialog from '../components/CheckInDialog.vue';
 import CheckOutDialog from '../components/CheckOutDialog.vue';
 import ChangeRoomDialog from '../components/ChangeRoomDialog.vue';
 import FolioDialog from '../components/FolioDialog.vue';
+import RoomDetailPanel from '../components/RoomDetailPanel.vue';
+import OrderDetailDialog from '../components/OrderDetailDialog.vue';
 
 const date = ref(fmtDate());
 const roomTypes = ref([]);
@@ -172,8 +153,11 @@ const keyword = ref('');
 const checkedStatuses = ref(Object.keys(ROOM_STATUS));
 const filterCollapsed = ref(false);
 
-const detailVisible = ref(false);
+const bubbleVisible = ref(false);
 const detailItem = ref(null);
+const detailSummary = ref(null);
+const bubblePos = ref({ left: '0px', top: '0px', flip: false });
+const bubbleRef = ref(null);
 
 const bookingVisible = ref(false);
 const walkinVisible = ref(false);
@@ -183,7 +167,11 @@ const checkoutVisible = ref(false);
 const changeRoomVisible = ref(false);
 const folioVisible = ref(false);
 const currentRes = ref(null);
+const currentUnitId = ref(null);
 const initialForm = ref(null);
+const orderDetailVisible = ref(false);
+const currentOrderId = ref(null);
+const currentRoomId = ref(null);
 
 const floors = computed(() => [...new Set(statusRooms.value.map((x) => x.room.floor))].sort((a, b) => a - b));
 
@@ -230,69 +218,193 @@ const roomsByFloor = computed(() => {
   return map;
 });
 
-const detailTitle = computed(() =>
-  detailItem.value ? `房间 ${detailItem.value.room.room_no} - ${detailItem.value.room.type_name}` : ''
-);
-
+// ---- 房态卡片辅助 ----
+function statusMeta(item) {
+  return ROOM_STATUS[item.eff_status] || { text: item.eff_status || '未知', color: '#868e96', bg: '#f1f3f5' };
+}
 function cardStyle(item) {
-  const s = ROOM_STATUS[item.eff_status];
-  return {
-    background: s.bg,
-    borderColor: s.color,
-  };
+  const s = statusMeta(item);
+  return { background: s.bg, borderColor: s.color };
 }
 function guestText(item) {
   if (item.reservation) return item.reservation.guest_name;
   if (item.eff_status === 'ooo') return '维修封房';
-  return ROOM_STATUS[item.eff_status].text;
+  return statusMeta(item).text;
 }
-function dateText(item) {
-  if (item.reservation?.status === 'checked_in') return `离：${item.reservation.check_out_date}`;
-  if (item.reservation?.status === 'reserved') return `抵：${item.reservation.check_in_date}`;
-  return '';
+function channelBadge(item) {
+  const s = item.reservation?.source;
+  return s && s !== '散客' ? s : '';
+}
+function daysAway(dateStr) {
+  return nightsBetween(fmtDate(), dateStr);
+}
+// 该房当前是否已入住（部分入住时预订状态仍为 reserved，但该房间已占）
+function isOccupiedRoom(item) {
+  return ['occupied_clean', 'occupied_dirty', 'due_out'].includes(item.eff_status);
+}
+function badges(item) {
+  const list = [];
+  const res = item.reservation;
+  if (res) {
+    if (isOccupiedRoom(item)) {
+      const d = daysAway(res.check_out_date);
+      if (d === 0) list.push({ key: 'leave', text: '今日离', cls: 'badge-red' });
+      else if (d > 0) list.push({ key: 'leave', text: `${d}日离`, cls: 'badge-red' });
+      list.push({ key: 'time', text: res.booking_type === '钟点房' ? '次' : '全', cls: res.booking_type === '钟点房' ? 'badge-purple' : 'badge-blue' });
+    } else if (res.status === 'reserved') {
+      const d = daysAway(res.check_in_date);
+      if (d === 0) list.push({ key: 'arr', text: '今日抵', cls: 'badge-orange' });
+      else if (d > 0) list.push({ key: 'arr', text: `${d}日抵`, cls: 'badge-orange' });
+    }
+  }
+  return list;
 }
 
+// ---- 数据加载 ----
+const loadFailed = ref(false);
 async function load() {
-  const [data, types] = await Promise.all([
-    http.get('/room-status', { params: { date: date.value } }),
-    http.get('/room-types'),
-  ]);
-  statusRooms.value = data.rooms;
-  roomTypes.value = types;
+  try {
+    const [data, types] = await Promise.all([
+      http.get('/room-status', { params: { date: date.value } }),
+      http.get('/room-types'),
+    ]);
+    statusRooms.value = data.rooms;
+    roomTypes.value = types;
+    loadFailed.value = false;
+  } catch (e) {
+    loadFailed.value = true;
+  }
 }
+
+// ---- 详情气泡 ----
+async function loadSummary(item) {
+  detailSummary.value = null;
+  if (!item.reservation) return;
+  try {
+    const folio = await http.get('/finance/folio', { params: { reservation_id: item.reservation.id } });
+    const s = folio.summary || {};
+    detailSummary.value = {
+      consumption: s.charges || 0,
+      payment: s.payments || 0,
+      balance: s.accountBalance || 0,   // 账户余额：>0 应退客人，<0 客人欠款
+      deposit: s.depositBalance || 0,
+    };
+  } catch (e) {
+    detailSummary.value = null;
+  }
+}
+
+function openDetail(item, ev) {
+  const bw = 380;
+  const gap = 10;
+  const vw = window.innerWidth;
+  let left, flip = false;
+  if (ev && ev.currentTarget) {
+    const cardRect = ev.currentTarget.getBoundingClientRect();
+    left = cardRect.right + gap;
+    if (left + bw > vw - 8) {
+      left = cardRect.left - gap - bw;
+      flip = true;
+    }
+    left = Math.max(8, Math.min(left, vw - bw - 8));
+  } else {
+    left = vw - bw - 24;
+  }
+  const top = ev && ev.currentTarget ? Math.max(8, ev.currentTarget.getBoundingClientRect().top - 4) : 8;
+  bubblePos.value = { left: `${left}px`, top: `${top}px`, flip };
+  detailItem.value = item;
+  bubbleVisible.value = true;
+  loadSummary(item);
+}
+
+function closeDetail() {
+  bubbleVisible.value = false;
+  detailItem.value = null;
+  detailSummary.value = null;
+}
+
+async function refreshDetail() {
+  if (!detailItem.value) return;
+  const id = detailItem.value.room.id;
+  const fresh = statusRooms.value.find((x) => x.room.id === id);
+  if (fresh) {
+    detailItem.value = fresh;
+    await loadSummary(fresh);
+  } else {
+    closeDetail();
+  }
+}
+
+function onDocClick(e) {
+  if (!bubbleVisible.value) return;
+  if (bubbleRef.value && bubbleRef.value.contains(e.target)) return;
+  if (e.target.closest && e.target.closest('.room-card')) return;
+  closeDetail();
+}
+function onKeydown(e) {
+  if (e.key === 'Escape') closeDetail();
+}
+
 function toggleStatus(key) {
   const idx = checkedStatuses.value.indexOf(key);
   if (idx >= 0) checkedStatuses.value.splice(idx, 1);
   else checkedStatuses.value.push(key);
 }
 
-function openDetail(item) {
-  detailItem.value = item;
-  detailVisible.value = true;
-}
 function setCurrentRes() {
   const item = detailItem.value;
   currentRes.value = item.reservation ? { ...item.reservation, type_name: item.room.type_name, room_no: item.room.room_no } : null;
+  currentUnitId.value = item.reservation?.unit_id ?? null;
 }
 
 function doCheckin() { setCurrentRes(); checkinVisible.value = true; }
-function doCheckout() { setCurrentRes(); checkoutVisible.value = true; }
+async function doCheckout() {
+  const item = detailItem.value;
+  if (!item?.reservation) return;
+  const res = item.reservation;
+  const unitId = res.unit_id;
+  // 仅剩这一间在住且无待入住子单时走整单结算弹窗；否则按子单单间退房，其余子单继续
+  const soleInHouse = (res.checked_in_units || 0) <= 1 && (res.pending_units || 0) === 0;
+  if (!soleInHouse && unitId) {
+    const roomNo = item.room.room_no;
+    try {
+      await ElMessageBox.confirm(`确认房间 ${roomNo} 结账退房？其余房间继续在住，共用同一账单。`, '提示', { type: 'warning' });
+    } catch (e) { return; }
+    await http.post(`/reservations/${res.id}/rooms/${unitId}/check-out`, { actual_check_out: fmtDate() });
+    ElMessage.success('该房间已退房');
+    await load();
+    store.loadStats();
+    await refreshDetail();
+    return;
+  }
+  setCurrentRes();
+  checkoutVisible.value = true;
+}
 function openEdit() { setCurrentRes(); editVisible.value = true; }
 function openChangeRoom() { setCurrentRes(); changeRoomVisible.value = true; }
 function openFolio() { setCurrentRes(); folioVisible.value = true; }
+function openOrder() {
+  const item = detailItem.value;
+  if (!item?.reservation) return;
+  currentOrderId.value = item.reservation.id;
+  currentRoomId.value = item.room.id;
+  orderDetailVisible.value = true;
+}
 function openBooking() {
   initialForm.value = { room_id: detailItem.value.room.id, room_type_id: detailItem.value.room.type_id };
   bookingVisible.value = true;
 }
 function openWalkin() {
-  initialForm.value = { room_id: detailItem.value.room.id, room_type_id: detailItem.value.room.type_id };
+  const r = detailItem.value.room;
+  initialForm.value = { room_id: r.id, room_type_id: r.type_id, room_no: r.room_no, type_name: r.type_name };
   walkinVisible.value = true;
 }
 
 async function setHouseStatus(status) {
   const labels = { clean: '设为干净', dirty: '设为脏', ooo: '维修封房' };
+  const roomNo = detailItem.value.room.room_no;
   try {
-    await ElMessageBox.confirm(`确认将房间 ${detailItem.value.room.room_no} ${labels[status]}？`, '提示', { type: 'warning' });
+    await ElMessageBox.confirm(`确认将房间 ${roomNo} ${labels[status]}？`, '提示', { type: 'warning' });
   } catch (e) {
     return;
   }
@@ -300,19 +412,31 @@ async function setHouseStatus(status) {
   ElMessage.success('客房状态已更新');
   await load();
   store.loadStats();
+  await refreshDetail();
 }
 
 async function onSaved() {
-  detailVisible.value = false;
   await load();
   store.loadStats();
+  await refreshDetail();
 }
 
-onMounted(load);
+onMounted(() => {
+  load();
+  store.loadStats();
+  document.addEventListener('click', onDocClick);
+  document.addEventListener('keydown', onKeydown);
+});
+onUnmounted(() => {
+  document.removeEventListener('click', onDocClick);
+  document.removeEventListener('keydown', onKeydown);
+});
 </script>
 
 <style scoped>
 .room-status-layout { display: flex; align-items: flex-start; gap: 14px; }
+
+/* 左侧筛选 */
 .filter-panel { width: 220px; flex-shrink: 0; overflow: hidden; transition: width .2s ease; }
 .filter-panel .el-card__body { display: flex; flex-direction: column; gap: 16px; padding: 12px 14px; }
 .filter-panel.collapsed { width: 48px; }
@@ -341,32 +465,86 @@ onMounted(load);
 .status-filter-item .status-name { flex: 1; }
 .status-filter-item .status-count { font-size: 12px; color: #868e96; }
 .filter-result { font-size: 13px; color: #495057; }
+
+/* 房间宫格 */
 .rooms-content { flex: 1; min-width: 0; }
+.floor-card { margin-bottom: 4px; }
+.floor-card :deep(.el-card__header) { padding: 3px 8px; }
+.floor-card :deep(.el-card__body) { padding: 8px; }
+.floor-header { display: flex; align-items: center; gap: 8px; line-height: 18px; }
+.floor-title { font-size: 13px; font-weight: 600; color: #495057; }
+.floor-count { font-size: 11px; color: #868e96; }
 
-.floor-card { margin-bottom: 14px; }
-.floor-header { display: flex; align-items: center; gap: 10px; }
-.floor-title { font-size: 16px; font-weight: 700; }
-.floor-count { font-size: 12px; color: #868e96; }
+.rooms { display: grid; grid-template-columns: repeat(auto-fill, 112px); gap: 8px; }
 
-.rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
 .room-card {
   position: relative;
+  aspect-ratio: 1 / 1;
   border: 2px solid;
   border-radius: 8px;
-  padding: 10px 10px 8px;
+  padding: 8px;
   cursor: pointer;
   transition: transform .12s ease, box-shadow .12s ease;
+  overflow: hidden;
 }
 .room-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 10px rgba(0,0,0,.12);
 }
-.status-dot { position: absolute; top: 8px; right: 8px; width: 8px; height: 8px; border-radius: 50%; }
-.room-no { font-size: 19px; font-weight: 800; color: #212529; }
-.room-type { font-size: 11px; color: #868e96; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.room-guest { font-size: 13px; font-weight: 600; color: #343a40; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.room-date { font-size: 11px; color: #868e96; }
-.room-status-text { position: absolute; bottom: 8px; right: 10px; font-size: 12px; font-weight: 600; }
+.card-top { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.room-no { font-size: 18px; font-weight: 800; color: #212529; }
+.channel-tag {
+  flex-shrink: 0;
+  font-size: 10px; font-weight: 600; color: #fff;
+  background: #0ca678;
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.room-type { font-size: 10px; color: #868e96; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.room-guest { font-size: 13px; font-weight: 700; color: #343a40; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-badges { display: flex; gap: 3px; margin-top: 4px; flex-wrap: wrap; }
+.badge {
+  font-size: 10px; font-weight: 600; color: #fff;
+  border-radius: 3px; padding: 0 5px;
+}
+.badge-red { background: #e03131; }
+.badge-blue { background: #1c7ed6; }
+.badge-purple { background: #7048e8; }
+.badge-orange { background: #e8590c; }
+.room-status-text {
+  position: absolute; bottom: 6px; left: 8px;
+  font-size: 11px; font-weight: 600;
+}
 
-.detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+/* 气泡详情框 */
+.room-bubble {
+  position: fixed;
+  z-index: 1500;
+  width: 380px;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  background: #fff;
+  border: 1px solid #e9ecef;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.12);
+}
+.bubble-tail {
+  position: absolute;
+  left: -7px;
+  top: 16px;
+  width: 12px;
+  height: 12px;
+  background: #fff;
+  border-left: 1px solid #e9ecef;
+  border-bottom: 1px solid #e9ecef;
+  transform: rotate(45deg);
+}
+.room-bubble.flip .bubble-tail {
+  left: auto;
+  right: -7px;
+  border-left: none;
+  border-bottom: 1px solid #e9ecef;
+  border-right: 1px solid #e9ecef;
+  transform: rotate(-45deg);
+}
 </style>
