@@ -120,7 +120,7 @@ const props = defineProps({
   item: { type: Object, default: null },
   summary: { type: Object, default: null }, // { consumption, payment, balance }
 });
-const emit = defineEmits(['close', 'checkout', 'edit', 'renew', 'change-room', 'folio', 'checkin', 'book', 'walkin', 'set-house-status', 'open-order', 'card', 'read-card']);
+const emit = defineEmits(['close', 'checkout', 'edit', 'renew', 'change-room', 'folio', 'checkin', 'book', 'walkin', 'set-house-status', 'open-order', 'card']);
 
 const stay = computed(() => props.item?.reservation || null);
 // 该间在住人：入住人 + 同住人（详情里显示全部）
@@ -197,7 +197,6 @@ const actionGroups = computed(() => {
       { key: 'ext', text: '续住', event: 'renew', type: 'primary', disabled: !dueToday, title: dueToday ? '' : '仅可对今日离店的房间续住' },
       { key: 'chg', text: '换房', event: 'change-room', type: 'primary', plain: true },
       { key: 'card', text: '制卡', event: 'card', type: 'success' },
-      { key: 'read', text: '读卡', event: 'read-card', type: 'info', plain: true },
     ] });
     groups.push({ label: '房态', items: houseActions() });
   } else if (res && ['cancelled', 'no_show', 'checked_out'].includes(res.status)) {
@@ -232,10 +231,10 @@ const actionGroups = computed(() => {
     ] });
   }
 
-  // 非在住状态也提供「读卡」入口（核对卡片）
-  const hasRead = groups.some((g) => g.items.some((a) => a.event === 'read-card'));
-  if (!hasRead) {
-    groups.push({ label: '门锁', items: [{ key: 'read', text: '读卡', event: 'read-card', type: 'info', plain: true }] });
+  // 非在住房间也提供「制卡」入口（默认有效期 当前 ~ 次日 16:00）
+  const hasCard = groups.some((g) => g.items.some((a) => a.event === 'card'));
+  if (!hasCard) {
+    groups.push({ label: '门锁', items: [{ key: 'card', text: '制卡', event: 'card', type: 'success' }] });
   }
   return groups;
 });

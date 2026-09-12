@@ -4,6 +4,7 @@
     "enabled": true,
     "port": 0,
     "dbUser": "",
-    "dbPassword": ""
+    "dbPassword": "",
+    "timeoutMs": 45000
   }
 }

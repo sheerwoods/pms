@@ -120,19 +120,19 @@ router.put('/card/rooms/:id', wrap((req, res) => {
 // ============ 客人卡制卡 ============
 router.post('/card/write-guest', wrap(async (req, res) => {
   const {
-    reservation_id, unit_id, room_id, guest_name,
-    card_type = 0, special_room_list = '', begin_time, end_time,
+    reservation_id, unit_id, room_id,
+    card_type = 0, begin_time, end_time,
     ex_card_mess = '',
   } = req.body;
-  const f1 = asInt(req.body.floor1);
-  const f2 = asInt(req.body.floor2);
-  const f3 = asInt(req.body.floor3);
 
-  if (!reservation_id) throw new AppError('缺少订单');
-  const r = get('SELECT * FROM reservations WHERE id=?', reservation_id);
-  if (!r) throw new AppError('订单不存在', 404);
+  // 订单可选：非在住房间（空房/维修/锁房等）可只凭房号制卡
+  let r = null;
+  if (reservation_id) {
+    r = get('SELECT * FROM reservations WHERE id=?', reservation_id);
+    if (!r) throw new AppError('订单不存在', 404);
+  }
 
-  const unit = unit_id
+  const unit = unit_id && r
     ? get('SELECT * FROM reservation_rooms WHERE id=? AND reservation_id=?', unit_id, r.id)
     : null;
   const roomId = room_id || (unit && unit.room_id);
@@ -141,29 +141,30 @@ router.post('/card/write-guest', wrap(async (req, res) => {
   const lockNo = card.resolveLockNo(room);
 
   // 钟点房：有效期 = 入住时刻起 3 小时，避免同日退房被顺延成整日
-  const hourly = r.booking_type === '钟点房';
-  const name = String(guest_name || (unit && unit.guest_name) || r.guest_name || '').trim();
-  const beginSrc = begin_time || r.actual_check_in || (hourly ? now() : r.check_in_date);
+  const hourly = !!r && r.booking_type === '钟点房';
+  // 客人姓名自动取该间入住人（无需手动填写）
+  const name = String((unit && unit.guest_name) || (r && r.guest_name) || '').trim();
+  const beginSrc = begin_time || (r && r.actual_check_in) || (hourly ? now() : (r && r.check_in_date)) || now();
   const begin = card.formatCardTime(beginSrc, '1400');
   let rawEndTime;
-  if (end_time) rawEndTime = card.formatCardTime(end_time, '1200');
+  // 全日房离店时间默认下午 4 点；钟点房按入住时刻起固定时长
+  if (end_time) rawEndTime = card.formatCardTime(end_time, '1600');
   else if (hourly) rawEndTime = card.shiftCardHours(begin, card.HOURLY_HOURS);
-  else rawEndTime = card.formatCardTime((unit && unit.check_out_date) || r.check_out_date, '1200');
+  else rawEndTime = card.formatCardTime((unit && unit.check_out_date) || (r && r.check_out_date), '1600');
   if (!begin || begin.length !== 10) throw new AppError('开始时间格式不正确');
   if (!rawEndTime) throw new AppError('结束时间格式不正确');
   // 结束须晚于开始（同日 / 0 间夜自动顺延一天），否则厂商返回 -1
   const { end } = card.ensureValidWindow(begin, rawEndTime);
 
-  const special = String(special_room_list || '').replace(/\D/g, '').slice(0, 9);
   const guestCardType = asInt(card_type) === 1 ? 1 : 0;
 
   const logBase = {
-    action: 'guest', reservation_id: r.id, room_id: room.id, room_no: room.room_no, lock_no: lockNo,
+    action: 'guest', reservation_id: r ? r.id : null, room_id: room.id, room_no: room.room_no, lock_no: lockNo,
     card_type: 39, guest_name: name, begin_time: begin, end_time: end,
-    special_room_list: special, floor1: f1, floor2: f2, floor3: f3,
   };
 
-  const result = await card.invoke('writeGuestCard', [name, guestCardType, lockNo, special, begin, end, f1, f2, f3, String(ex_card_mess || '')]);
+  // 特殊房号 / 电梯楼层由门锁系统按房间自动处理，制卡时不传
+  const result = await card.invoke('writeGuestCard', [name, guestCardType, lockNo, '', begin, end, 0, 0, 0, String(ex_card_mess || '')]);
   const cardNo = result.data && result.data.cardNo != null ? asInt(result.data.cardNo) : null;
   if (!result.ok) {
     card.logCard({ ...logBase, card_no: null, result_code: result.code, result_msg: result.message });
@@ -212,26 +213,60 @@ router.post('/card/read', wrap(async (req, res) => {
 }));
 
 // ============ 退房（销卡） ============
+// 厂商「按房号退房」CheckOut 在部分门锁系统会返回 -5「房号错误」，
+// 而「按卡号退卡」CheckOut2 稳定可用；因此优先查制卡记录，按卡号逐一销卡。
 router.post('/card/checkout', wrap(async (req, res) => {
-  const { room_id, card_no } = req.body;
-  let result;
-  let logBase;
+  const { room_id, card_no, reservation_id } = req.body;
+
   if (card_no != null && card_no !== '') {
-    result = await card.invoke('checkout2', [asInt(card_no)]);
-    logBase = { action: 'checkout2', card_no: asInt(card_no) };
-  } else {
-    if (!room_id) throw new AppError('请选择房间或输入卡号');
-    const room = roomById(room_id);
-    const lockNo = card.resolveLockNo(room);
-    result = await card.invoke('checkout', [lockNo]);
-    logBase = { action: 'checkout', room_id: room.id, room_no: room.room_no, lock_no: lockNo };
+    const no = asInt(card_no);
+    const r = await card.invoke('checkout2', [no]);
+    card.logCard({
+      action: 'checkout2', reservation_id: reservation_id || null, room_id: room_id || null, card_no: no,
+      result_code: r.ok ? 0 : r.code, result_msg: r.ok ? '成功' : r.message,
+    });
+    if (!r.ok) throw new AppError(r.message);
+    res.json({ ok: true, count: 1 });
+    return;
   }
-  if (!result.ok) {
-    card.logCard({ ...logBase, result_code: result.code, result_msg: result.message });
-    throw new AppError(result.message);
+
+  if (!room_id) throw new AppError('请选择房间或输入卡号');
+  const room = roomById(room_id);
+  const lockNo = card.resolveLockNo(room);
+
+  // 该房间（可限定订单）已成功发出的客人卡
+  const conds = ["action='guest'", 'card_no IS NOT NULL', 'result_code=0', 'room_id=?'];
+  const params = [room.id];
+  if (reservation_id) { conds.push('reservation_id=?'); params.push(reservation_id); }
+  const cards = q(
+    `SELECT DISTINCT card_no FROM card_logs WHERE ${conds.join(' AND ')} ORDER BY id DESC${reservation_id ? '' : ' LIMIT 1'}`,
+    ...params
+  );
+
+  if (!cards.length) {
+    // 无制卡记录：回退按门锁房号退房
+    const r = await card.invoke('checkout', [lockNo]);
+    card.logCard({
+      action: 'checkout', reservation_id: reservation_id || null, room_id: room.id, room_no: room.room_no,
+      lock_no: lockNo, result_code: r.ok ? 0 : r.code, result_msg: r.ok ? '成功' : r.message,
+    });
+    if (!r.ok) throw new AppError(r.message);
+    res.json({ ok: true, count: 1 });
+    return;
   }
-  card.logCard({ ...logBase, result_code: 0, result_msg: '成功' });
-  res.json({ ok: true });
+
+  const failed = [];
+  for (const c of cards) {
+    const no = asInt(c.card_no);
+    const r = await card.invoke('checkout2', [no]);
+    card.logCard({
+      action: 'checkout2', reservation_id: reservation_id || null, room_id: room.id, room_no: room.room_no,
+      lock_no: lockNo, card_no: no, result_code: r.ok ? 0 : r.code, result_msg: r.ok ? '成功' : r.message,
+    });
+    if (!r.ok) failed.push(`${room.room_no}#${no}: ${r.message}`);
+  }
+  if (failed.length) throw new AppError(`销卡失败：${failed.join('；')}`);
+  res.json({ ok: true, count: cards.length });
 }));
 
 // ============ 管理卡 ============

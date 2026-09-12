@@ -30,6 +30,7 @@
     </div>
     <template #footer>
       <el-button :loading="loading" @click="doRead">重新读卡</el-button>
+      <el-button type="danger" plain :loading="clearing" :disabled="!card" @click="doClear">清卡</el-button>
       <el-button type="primary" @click="$emit('update:visible', false)">关闭</el-button>
     </template>
   </el-dialog>
@@ -40,6 +41,7 @@
 
 <script setup>
 import { ref } from 'vue';
+import { ElMessage } from 'element-plus';
 import http from '../api';
 import OrderDetailDialog from './OrderDetailDialog.vue';
 
@@ -47,11 +49,26 @@ defineProps({ visible: Boolean });
 const emit = defineEmits(['update:visible']);
 
 const loading = ref(false);
+const clearing = ref(false);
 const error = ref('');
 const card = ref(null);
 const orderVisible = ref(false);
 const orderResId = ref(null);
 const orderRoomId = ref(null);
+
+async function doClear() {
+  clearing.value = true;
+  error.value = '';
+  try {
+    await http.post('/card/management', { action: 'clear' });
+    ElMessage.success('卡片已清空');
+    card.value = null;
+  } catch (e) {
+    error.value = e.response?.data?.error || e.message || '清卡失败';
+  } finally {
+    clearing.value = false;
+  }
+}
 
 async function doRead() {
   loading.value = true;

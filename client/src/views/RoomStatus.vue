@@ -113,7 +113,6 @@
         @set-house-status="setHouseStatus"
         @open-order="openOrder"
         @card="doCard"
-        @read-card="doReadCard"
       />
     </div>
 
@@ -423,24 +422,41 @@ function doReadCard() {
 }
 function doCard() {
   const item = detailItem.value;
-  const res = item && item.reservation;
-  if (!item || !res) return;
-  const checkIn = res.actual_check_in ? String(res.actual_check_in).slice(0, 10) : res.check_in_date;
-  const checkInTime = res.actual_check_in ? String(res.actual_check_in).slice(0, 16).replace('T', ' ') : '';
-  const checkOut = res.unit_check_out_date || res.check_out_date;
+  if (!item) return;
+  const res = item.reservation;
+  // 在住：按入住/预离日期制卡
+  if (res && isOccupiedRoom(item)) {
+    const checkIn = res.actual_check_in ? String(res.actual_check_in).slice(0, 10) : res.check_in_date;
+    const checkInTime = res.actual_check_in ? String(res.actual_check_in).slice(0, 16).replace('T', ' ') : '';
+    const checkOut = res.unit_check_out_date || res.check_out_date;
+    openCard({
+      reservation_id: res.id,
+      guest_name: res.unit_guest_name || res.guest_name,
+      check_in_date: checkIn,
+      check_in_time: checkInTime,
+      is_hourly: res.booking_type === '钟点房',
+      check_out_date: checkOut,
+      rooms: [{
+        unit_id: res.unit_id || null,
+        room_id: item.room.id,
+        room_no: item.room.room_no,
+        guest_name: res.unit_guest_name || res.guest_name,
+        check_out_date: checkOut,
+      }],
+    });
+    return;
+  }
+  // 非在住（预抵/空房/终态/维修锁房）：默认有效期 当前 ~ 次日 16:00，可无订单制卡
+  const guest = res ? (res.unit_guest_name || res.guest_name) : '';
   openCard({
-    reservation_id: res.id,
-    guest_name: res.unit_guest_name || res.guest_name,
-    check_in_date: checkIn,
-    check_in_time: checkInTime,
-    is_hourly: res.booking_type === '钟点房',
-    check_out_date: checkOut,
+    reservation_id: res ? res.id : null,
+    guest_name: guest,
+    default_window: true,
     rooms: [{
-      unit_id: res.unit_id || null,
+      unit_id: (res && res.unit_id) || null,
       room_id: item.room.id,
       room_no: item.room.room_no,
-      guest_name: res.unit_guest_name || res.guest_name,
-      check_out_date: checkOut,
+      guest_name: guest,
     }],
   });
 }

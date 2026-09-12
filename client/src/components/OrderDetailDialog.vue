@@ -28,7 +28,7 @@
                 <div class="od-item"><span class="k">预定人</span><span class="v">{{ detail.guest_name || '-' }}</span></div>
                 <div class="od-item"><span class="k">预定手机号</span><span class="v">{{ detail.guest_phone || '-' }}</span></div>
                 <div class="od-item"><span class="k">入住时间</span><span class="v">{{ detail.check_in_date }}</span></div>
-                <div class="od-item"><span class="k">离店时间</span><span class="v">{{ detail.check_out_date }} 12:00:00</span></div>
+                <div class="od-item"><span class="k">离店时间</span><span class="v">{{ detail.check_out_date }} 16:00:00</span></div>
                 <div class="od-item"><span class="k">晚数</span><span class="v">{{ nightsText }}</span></div>
                 <div class="od-item"><span class="k">预订类型</span><span class="v">{{ detail.booking_type || '全日房' }}</span></div>
                 <div class="od-item"><span class="k">来源</span><span class="v">{{ detail.source || '-' }}</span></div>
@@ -85,7 +85,7 @@
                 <div class="od-item"><span class="k">房型</span><span class="v">{{ roomTypeName }}</span></div>
                 <div class="od-item"><span class="k">房号</span><span class="v no">{{ roomText }}</span></div>
                 <div class="od-item"><span class="k">入住时间</span><span class="v">{{ checkInText }}</span></div>
-                <div class="od-item"><span class="k">离店时间</span><span class="v">{{ unitCheckOutDate }} 12:00:00</span></div>
+                <div class="od-item"><span class="k">离店时间</span><span class="v">{{ unitCheckOutDate }} 16:00:00</span></div>
                 <div class="od-item"><span class="k">天数</span><span class="v">{{ unitNightsText }}</span></div>
                 <div class="od-item"><span class="k">房价类型</span><span class="v">{{ detail.booking_type || '全日房' }}</span></div>
                 <div class="od-item"><span class="k">来源</span><span class="v">{{ detail.source || '-' }}</span></div>
@@ -256,6 +256,9 @@
           </div>
           <div v-else class="od-bottom">
             <el-button v-if="detail.status === 'cancelled'" type="success" plain @click="doRestore">恢复预定</el-button>
+            <el-button v-if="detail.status === 'checked_out'" type="danger" plain :loading="voiding" @click="doVoidCard">
+              销卡
+            </el-button>
             <el-button plain @click="openFolio">账单</el-button>
             <el-button plain @click="copyPage">复制页面</el-button>
           </div>
@@ -349,6 +352,9 @@ const cohabForm = reactive({ name: '', id_card: '', phone: '' });
 const roomEditing = ref(false);
 const savingRoom = ref(false);
 const roomEditForm = reactive({ remark: '' });
+
+// 销卡：物理清空读卡器上的客人卡（复用空房读卡弹窗的清卡）
+const voiding = ref(false);
 
 const statusMeta = computed(() => {
   const d = detail.value;
@@ -620,6 +626,15 @@ async function doRestore() {
   await http.post(`/reservations/${detail.value.id}/restore`);
   ElMessage.success('已恢复预定');
   await onSaved();
+}
+// 销卡：与空房读卡弹窗的「清卡」一致，调用厂商 ClearCardData 物理清空卡片数据，
+// 而非按卡号退卡（CheckOut2 只销门锁库卡号，卡内数据仍可读出）
+async function doVoidCard() {
+  voiding.value = true;
+  try {
+    await http.post('/card/management', { action: 'clear' });
+    ElMessage.success('销卡成功，卡片已清空');
+  } catch (e) { /* 拦截器已提示 */ } finally { voiding.value = false; }
 }
 
 // 结账退房：仅剩一间在住且无待入住子单时整单结算；否则单间退房，其余子单继续

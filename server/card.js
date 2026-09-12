@@ -22,7 +22,7 @@ const CODE_TEXT = {
   0: '成功', '-1': '日期/时间格式错误（有效期结束须晚于开始）', '-2': '写卡失败', '-3': '楼号错误', '-4': '楼层错误',
   '-5': '房号错误', '-6': '卡号错误', '-7': '读卡失败，请确认卡片已放好且设备正常',
   '-8': '门锁系统未登记该房号（查询房间批次失败），请在门锁系统中登记房间或修改本房门锁房号',
-  '-9': '特殊房号错误', '-10': '非本系统卡片', '-100': '门锁数据库未打开', '-101': '连接门锁数据库失败',
+  '-9': '特殊房号错误', '-10': '非本系统卡片', '-100': '门锁数据库未打开', '-101': '连接门锁数据库失败（门锁数据库未响应，请检查门锁系统数据库服务）',
   '-102': '关闭门锁数据库失败', '-103': '门锁数据库未创建', '-200': '打开写卡器串口失败，请检查串口设置',
   '-201': '连接数据采集器失败', '-202': '无效数据', '-300': '卡块错误',
 };
@@ -53,6 +53,17 @@ function cardEnabled() {
 function cardPort() {
   const n = parseInt(setting('card_port', '0'), 10);
   return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+// 子进程超时（毫秒）：厂商 DLL 内部连接/查询超时可达 15~30s。
+// 若 PMS 先于 DLL 杀掉子进程，就拿不到厂商返回的真实错误码（如 -101 门锁数据库连接失败），
+// 前台只会看到笼统的「超时」。故默认放宽到 45s，可用 config/machine.json 的 card.timeoutMs 覆盖。
+const CARD_TIMEOUT_DEFAULT = 45000;
+function cardTimeoutMs() {
+  const m = (machineConfig() || {}).card || {};
+  const n = parseInt(m.timeoutMs, 10);
+  if (!Number.isFinite(n)) return CARD_TIMEOUT_DEFAULT;
+  return Math.min(180000, Math.max(5000, n));
 }
 
 // 副房号（门锁房号末位）。厂商系统实际按 1 起编，默认 1
@@ -206,7 +217,7 @@ function callCard(cmd, args, opts) {
 }
 
 // 执行一条命令；args 为除 user/pass/port 外的业务参数（按厂商函数顺序）
-function rawCallCard(cmd, args, { timeout = 20000 } = {}) {
+function rawCallCard(cmd, args, { timeout = cardTimeoutMs() } = {}) {
   return new Promise((resolve, reject) => {
     try { ensureTool(); } catch (e) { reject(e); return; }
     const child = spawn(TOOL_PATH, [], { cwd: VENDOR_DIR, windowsHide: true });
@@ -217,7 +228,11 @@ function rawCallCard(cmd, args, { timeout = 20000 } = {}) {
       if (settled) return;
       settled = true;
       try { child.kill(); } catch { /* 忽略 */ }
-      reject(new AppError('制卡设备响应超时'));
+      const secs = Math.round(timeout / 1000);
+      reject(new AppError(
+        `制卡超时（${secs} 秒无响应）：写卡器或门锁数据库未响应。` +
+        '请检查写卡器连接与门锁系统数据库服务，查看 vendor/es200601/log 最新日志确认原因'
+      ));
     }, timeout);
     child.stdout.on('data', (d) => { out += d.toString('utf8'); });
     child.stderr.on('data', (d) => { err += d.toString('utf8'); });
@@ -288,6 +303,7 @@ module.exports = {
   setting,
   cardEnabled,
   cardPort,
+  cardTimeoutMs,
   cardSub,
   cardBuilding,
   autoLockNo,
