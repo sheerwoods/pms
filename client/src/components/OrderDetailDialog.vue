@@ -9,7 +9,7 @@
     @closed="reset"
     class="order-detail-dialog"
   >
-    <div v-if="detail" class="od-body">
+    <div v-if="detail" class="od-body" @click="onBodyClick">
       <!-- 顶部摘要 -->
       <div class="od-head">
         <span class="od-no">{{ detail.order_no }}</span>
@@ -96,18 +96,18 @@
                 <div class="od-item"><span class="k">订单号</span><span class="v">{{ detail.order_no }}</span></div>
                 <div class="od-item">
                   <span class="k">备注</span>
-                  <el-input v-if="roomEditing" v-model="roomEditForm.remark" size="small" type="textarea" :rows="1" placeholder="备注" style="width: 200px" />
+                  <el-input v-if="roomEditing" v-model="roomEditForm.remark" class="remark-edit" size="small" type="textarea" :rows="1" placeholder="备注" style="width: 200px" />
                   <span v-else class="v note">{{ unitRemark || '-' }}</span>
                 </div>
               </div>
               <div class="od-row-btns">
                 <template v-if="roomEditing">
-                  <el-button size="small" type="primary" :loading="savingRoom" @click="saveRoom">保存</el-button>
-                  <el-button size="small" @click="cancelRoomEdit">取消</el-button>
+                  <el-button key="save" size="small" type="primary" :loading="savingRoom" @click.stop="saveRoom">保存</el-button>
+                  <el-button key="cancel" size="small" @click.stop="cancelRoomEdit">取消</el-button>
                 </template>
                 <template v-else>
-                  <el-button v-if="curRoom.status === 'checked_in'" size="small" @click="startRoomEdit">修改备注</el-button>
-                  <el-button v-if="curRoom.status !== 'checked_out'" size="small" @click="openEdit">预定信息</el-button>
+                  <el-button key="edit" v-if="curRoom.status === 'checked_in'" size="small" @click.stop="startRoomEdit">修改备注</el-button>
+                  <el-button key="resv" v-if="curRoom.status !== 'checked_out'" size="small" @click.stop="openEdit">预定信息</el-button>
                 </template>
               </div>
             </div>
@@ -298,7 +298,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch } from 'vue';
+import { ref, reactive, computed, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { UserFilled } from '@element-plus/icons-vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
@@ -584,11 +584,23 @@ async function saveCohab() {
 }
 
 // 房间备注修改：内联编辑（仅本间备注）——仅作用于当前房间子单，不回写父订单
+// 触发进入编辑态的那次点击不应被当作「点击空白处保存」
+let skipNextBodyClick = false;
 function startRoomEdit() {
   roomEditForm.remark = unitRemark.value;
+  skipNextBodyClick = true;
   roomEditing.value = true;
+  nextTick(() => { skipNextBodyClick = false; });
 }
 function cancelRoomEdit() { roomEditing.value = false; }
+// 备注编辑中点击弹窗空白处即保存（输入框与保存/取消按钮自身不触发）
+function onBodyClick(e) {
+  if (skipNextBodyClick) return;
+  if (!roomEditing.value || savingRoom.value) return;
+  const t = e.target;
+  if (t.closest('.remark-edit') || t.closest('.od-row-btns')) return;
+  saveRoom();
+}
 async function saveRoom() {
   if (!detail.value || !curRoom.value?.id) return ElMessage.warning('请先选择在住房间');
   savingRoom.value = true;
