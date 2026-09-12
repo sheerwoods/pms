@@ -2,6 +2,7 @@
 const express = require('express');
 const { q, get, run } = require('../db');
 const { AppError, wrap } = require('../errors');
+const { now } = require('../utils');
 const card = require('../card');
 
 const router = express.Router();
@@ -139,12 +140,17 @@ router.post('/card/write-guest', wrap(async (req, res) => {
   const room = roomById(roomId);
   const lockNo = card.resolveLockNo(room);
 
+  // 钟点房：有效期 = 入住时刻起 3 小时，避免同日退房被顺延成整日
+  const hourly = r.booking_type === '钟点房';
   const name = String(guest_name || (unit && unit.guest_name) || r.guest_name || '').trim();
-  const begin = card.formatCardTime(begin_time || r.check_in_date, '1400');
-  const rawEnd = end_time || (unit && unit.check_out_date) || r.check_out_date;
-  const rawEndTime = card.formatCardTime(rawEnd, '1200');
+  const beginSrc = begin_time || r.actual_check_in || (hourly ? now() : r.check_in_date);
+  const begin = card.formatCardTime(beginSrc, '1400');
+  let rawEndTime;
+  if (end_time) rawEndTime = card.formatCardTime(end_time, '1200');
+  else if (hourly) rawEndTime = card.shiftCardHours(begin, card.HOURLY_HOURS);
+  else rawEndTime = card.formatCardTime((unit && unit.check_out_date) || r.check_out_date, '1200');
   if (!begin || begin.length !== 10) throw new AppError('开始时间格式不正确');
-  if (rawEnd && !rawEndTime) throw new AppError('结束时间格式不正确');
+  if (!rawEndTime) throw new AppError('结束时间格式不正确');
   // 结束须晚于开始（同日 / 0 间夜自动顺延一天），否则厂商返回 -1
   const { end } = card.ensureValidWindow(begin, rawEndTime);
 

@@ -1,0 +1,334 @@
+{
+  "roomTypes": [
+    {
+      "name": "商务大床房",
+      "basePrice": 268,
+      "remark": "示例数据，待替换"
+    },
+    {
+      "name": "商务双床房",
+      "basePrice": 298,
+      "remark": "示例数据，待替换"
+    },
+    {
+      "name": "行政大床房",
+      "basePrice": 398,
+      "remark": "示例数据，待替换"
+    },
+    {
+      "name": "豪华套房",
+      "basePrice": 588,
+      "remark": "示例数据，待替换"
+    }
+  ],
+  "rooms": [
+    {
+      "roomNo": "301",
+      "floor": 3,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "302",
+      "floor": 3,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "303",
+      "floor": 3,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "305",
+      "floor": 3,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "306",
+      "floor": 3,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "307",
+      "floor": 3,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "308",
+      "floor": 3,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "309",
+      "floor": 3,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "310",
+      "floor": 3,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "311",
+      "floor": 3,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "312",
+      "floor": 3,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "313",
+      "floor": 3,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "401",
+      "floor": 4,
+      "type": "商务双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "402",
+      "floor": 4,
+      "type": "商务双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "403",
+      "floor": 4,
+      "type": "商务双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "405",
+      "floor": 4,
+      "type": "商务双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "406",
+      "floor": 4,
+      "type": "商务双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "407",
+      "floor": 4,
+      "type": "商务双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "408",
+      "floor": 4,
+      "type": "商务双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "409",
+      "floor": 4,
+      "type": "商务双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "410",
+      "floor": 4,
+      "type": "商务双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "411",
+      "floor": 4,
+      "type": "商务双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "412",
+      "floor": 4,
+      "type": "商务双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "501",
+      "floor": 5,
+      "type": "行政大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "502",
+      "floor": 5,
+      "type": "行政大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "503",
+      "floor": 5,
+      "type": "行政大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "505",
+      "floor": 5,
+      "type": "行政大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "506",
+      "floor": 5,
+      "type": "行政大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "507",
+      "floor": 5,
+      "type": "行政大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "508",
+      "floor": 5,
+      "type": "行政大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "509",
+      "floor": 5,
+      "type": "行政大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "510",
+      "floor": 5,
+      "type": "行政大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "511",
+      "floor": 5,
+      "type": "行政大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "601",
+      "floor": 6,
+      "type": "豪华套房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "602",
+      "floor": 6,
+      "type": "豪华套房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "603",
+      "floor": 6,
+      "type": "豪华套房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "605",
+      "floor": 6,
+      "type": "豪华套房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "606",
+      "floor": 6,
+      "type": "豪华套房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "607",
+      "floor": 6,
+      "type": "豪华套房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "608",
+      "floor": 6,
+      "type": "豪华套房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "609",
+      "floor": 6,
+      "type": "豪华套房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "610",
+      "floor": 6,
+      "type": "豪华套房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "611",
+      "floor": 6,
+      "type": "豪华套房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "612",
+      "floor": 6,
+      "type": "豪华套房",
+      "lockNo": "",
+      "remark": ""
+    }
+  ]
+}

@@ -5,6 +5,7 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 const { AppError } = require('./errors');
 const { get, run } = require('./db');
+const { machineConfig } = require('./stores/config');
 
 const VENDOR_DIR = path.join(__dirname, '..', 'vendor', 'es200601');
 const TOOL_PATH = path.join(VENDOR_DIR, 'CardTool.exe');
@@ -31,7 +32,15 @@ function codeText(code) {
 }
 
 // ---------------- 系统设置 ----------------
+// 硬件设置（启用/串口/门锁库账号）属于机器而非门店：config/machine.json 优先，
+// 未定义时回退到本店 settings。门店级的楼栋号/副房号仍走各店自己的 settings。
 function setting(key, def = '') {
+  const m = (machineConfig() || {}).card || {};
+  if (key === 'card_enabled' && m.enabled !== undefined) return m.enabled ? '1' : '0';
+  // 串口：仅在 machine.json 显式指定了非 0 值时覆盖，否则沿用本店设置（0 = 不改动门锁系统配置）
+  if (key === 'card_port' && Number(m.port) > 0) return String(m.port);
+  if (key === 'card_db_user' && m.dbUser) return String(m.dbUser);
+  if (key === 'card_db_password' && m.dbPassword) return String(m.dbPassword);
   const r = get('SELECT value FROM settings WHERE key=?', key);
   return r && r.value != null ? r.value : def;
 }
@@ -95,6 +104,20 @@ function formatCardTime(input, defaultHHmm = '1200') {
   const hh = m[4] != null ? m[4] : defaultHHmm.slice(0, 2);
   const mm = m[5] != null ? m[5] : defaultHHmm.slice(2, 4);
   return `${yy}${m[2]}${m[3]}${hh}${mm}`;
+}
+
+// 钟点房固定时长（小时），与前端房态/订单展示一致
+const HOURLY_HOURS = 3;
+
+// 在 'YYMMDDHHmm' 上顺延小时
+function shiftCardHours(t, hours) {
+  const s = String(t || '');
+  if (!/^\d{10}$/.test(s)) return '';
+  const dt = new Date(2000 + Number(s.slice(0, 2)), Number(s.slice(2, 4)) - 1, Number(s.slice(4, 6)),
+    Number(s.slice(6, 8)), Number(s.slice(8, 10)));
+  dt.setHours(dt.getHours() + hours);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${String(dt.getFullYear()).slice(2)}${p(dt.getMonth() + 1)}${p(dt.getDate())}${p(dt.getHours())}${p(dt.getMinutes())}`;
 }
 
 // 在 'YYMMDDHHmm' 上顺延天数
@@ -172,8 +195,18 @@ function parseResult(line, stderr) {
   return { ok: false, code: -997, message: (stderr || '').trim() || '制卡助手返回异常', data: {} };
 }
 
+// 一台机器只有一个读卡器/串口：把并发调用串行化，避免多店同时制卡抢占端口。
+// 队列是进程级的（机器级），与门店无关。
+let cardQueue = Promise.resolve();
+function callCard(cmd, args, opts) {
+  const run = () => rawCallCard(cmd, args, opts);
+  const next = cardQueue.then(run, run);
+  cardQueue = next.then(() => {}, () => {});
+  return next;
+}
+
 // 执行一条命令；args 为除 user/pass/port 外的业务参数（按厂商函数顺序）
-function callCard(cmd, args, { timeout = 20000 } = {}) {
+function rawCallCard(cmd, args, { timeout = 20000 } = {}) {
   return new Promise((resolve, reject) => {
     try { ensureTool(); } catch (e) { reject(e); return; }
     const child = spawn(TOOL_PATH, [], { cwd: VENDOR_DIR, windowsHide: true });
@@ -261,6 +294,8 @@ module.exports = {
   resolveLockNo,
   parseLockNo,
   formatCardTime,
+  HOURLY_HOURS,
+  shiftCardHours,
   shiftCardTime,
   ensureValidWindow,
   callCard,

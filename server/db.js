@@ -1,23 +1,20 @@
-// SQLite 初始化 / 建表 / 种子数据
-const path = require('path');
-const fs = require('fs');
-const { DatabaseSync } = require('node:sqlite');
+// SQLite 初始化 / 建表 / 门店房间同步
+// 一店一个数据库文件（data/stores/<key>.db），q/get/run 经 registry 的
+// AsyncLocalStorage 解析当前门店的库 —— 因此所有路由查询无需改动。
 const { timeToMinutes, businessDateOf } = require('./utils');
+const { listStores, legacyStoreKey } = require('./stores/config');
+const registry = require('./stores/registry');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+const getDb = () => registry.getDb();
+const runWithStore = registry.runWithStore;
 
-const db = new DatabaseSync(path.join(DATA_DIR, 'pms.db'));
-db.exec('PRAGMA journal_mode = WAL');
-db.exec('PRAGMA foreign_keys = ON');
-
-// 便捷查询
-const q = (sql, ...params) => db.prepare(sql).all(...params);
-const get = (sql, ...params) => db.prepare(sql).get(...params);
-const run = (sql, ...params) => db.prepare(sql).run(...params);
+// 便捷查询：签名与原实现保持一致
+const q = (sql, ...params) => getDb().prepare(sql).all(...params);
+const get = (sql, ...params) => getDb().prepare(sql).get(...params);
+const run = (sql, ...params) => getDb().prepare(sql).run(...params);
 
 function initSchema() {
-  db.exec(`
+  getDb().exec(`
     CREATE TABLE IF NOT EXISTS room_types (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -259,17 +256,17 @@ function initSchema() {
   if (!fiCols.includes('room_unit_id')) run('ALTER TABLE folio_items ADD COLUMN room_unit_id INTEGER REFERENCES reservation_rooms(id)');
   // folio_items 营业日
   if (!fiCols.includes('business_date')) run('ALTER TABLE folio_items ADD COLUMN business_date TEXT');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_folio_bdate ON folio_items(business_date)');
+  getDb().exec('CREATE INDEX IF NOT EXISTS idx_folio_bdate ON folio_items(business_date)');
   // folio_items 逐笔结账状态（open / partial / settled / ar，明细见 folio_allocations）
   if (!fiCols.includes('settle_status')) run("ALTER TABLE folio_items ADD COLUMN settle_status TEXT NOT NULL DEFAULT 'open'");
-  db.exec('CREATE INDEX IF NOT EXISTS idx_folio_settle_status ON folio_items(settle_status)');
+  getDb().exec('CREATE INDEX IF NOT EXISTS idx_folio_settle_status ON folio_items(settle_status)');
 
   // city_ledger 归属 AR 账户 + 关联 folio 付款（追溯/护栏）
   const clCols = q('PRAGMA table_info(city_ledger)').map((c) => c.name);
   if (!clCols.includes('ar_account_id')) run('ALTER TABLE city_ledger ADD COLUMN ar_account_id INTEGER');
   if (!clCols.includes('folio_item_id')) run('ALTER TABLE city_ledger ADD COLUMN folio_item_id INTEGER');
   if (!clCols.includes('transferred_at')) run('ALTER TABLE city_ledger ADD COLUMN transferred_at TEXT');
-  db.exec('CREATE INDEX IF NOT EXISTS idx_ledger_account ON city_ledger(ar_account_id, status)');
+  getDb().exec('CREATE INDEX IF NOT EXISTS idx_ledger_account ON city_ledger(ar_account_id, status)');
 
   migrateArAccounts();
   migrateFolioSettlements();
@@ -359,7 +356,7 @@ function backfillBusinessDates() {
   const rows = q('SELECT id, item_type, description, created_at FROM folio_items WHERE business_date IS NULL');
   if (!rows.length) return;
   const auditMin = timeToMinutes(get("SELECT value FROM settings WHERE key='night_audit_time'")?.value, 6 * 60);
-  db.exec('BEGIN');
+  getDb().exec('BEGIN');
   try {
     for (const r of rows) {
       let bd = null;
@@ -370,9 +367,9 @@ function backfillBusinessDates() {
       if (!bd) bd = businessDateOf(r.created_at, auditMin);
       run('UPDATE folio_items SET business_date=? WHERE id=?', bd, r.id);
     }
-    db.exec('COMMIT');
+    getDb().exec('COMMIT');
   } catch (e) {
-    db.exec('ROLLBACK');
+    getDb().exec('ROLLBACK');
     throw e;
   }
 }
@@ -418,37 +415,66 @@ function backfillReservationRooms() {
   }
 }
 
-function seed() {
-  const t = get('SELECT COUNT(*) AS c FROM room_types');
-  if (t.c > 0) return;
-
-  // ---- 房型（门市价后续可在系统中调整）----
-  const typeNames = [
-    ['标准大床房', 0],
-    ['河景大床房', 0],
-    ['城景双床房', 0],
-  ];
-  const typeId = [];
-  for (const [n, p] of typeNames) {
-    typeId.push(Number(run('INSERT INTO room_types (name, base_price) VALUES (?,?)', n, p).lastInsertRowid));
+// 门店房间同步（跟随 git）：按配置 upsert 房型与房间。
+// 关键：按 room_no 匹配更新，保持 rooms.id 不变 —— reservations.room_id 与
+// reservation_rooms.room_id 都指向它，删了重建会静默损坏历史订单。
+// 本函数绝不写 reservations/folio/AR 等订单相关表（订单数据不跟随系统）。
+function syncStoreRooms(store) {
+  const roomTypes = store._roomTypes || [];
+  const rooms = store._rooms || [];
+  for (const t of roomTypes) {
+    const basePrice = Number(t.basePrice) || 0;
+    const remark = t.remark || '';
+    const existing = get('SELECT id FROM room_types WHERE name=?', t.name);
+    if (existing) run('UPDATE room_types SET base_price=?, remark=? WHERE id=?', basePrice, remark, existing.id);
+    else run('INSERT INTO room_types (name, base_price, remark) VALUES (?,?,?)', t.name, basePrice, remark);
   }
 
-  // ---- 房间：1栋 8-12楼，共 111 间 ----
-  // 8楼（19间）：01-10 河景大床房，11/12/15/16 城景双床房，17-22 河景大床房
-  // 9-12楼（各23间）：01-03 标准大床房，05-12/15/16 河景大床房，17-23/25-27 城景双床房
-  const addRooms = (floor, tid, nos) => {
-    for (const no of nos) run('INSERT INTO rooms (room_no, floor, type_id) VALUES (?,?,?)', no, floor, tid);
-  };
-  addRooms(8, typeId[1], ['8801', '8802', '8803', '8805', '8806', '8807', '8808', '8809', '8810', '8817', '8818', '8819', '8820', '8821', '8822']);
-  addRooms(8, typeId[2], ['8811', '8812', '8815', '8816']);
-  for (const f of [9, 10, 11, 12]) {
-    const p = f <= 9 ? `8${f}` : String(f);   // 房号前缀：8楼→88、9楼→89、10楼及以上→楼层号
-    addRooms(f, typeId[0], [`${p}01`, `${p}02`, `${p}03`]);
-    addRooms(f, typeId[1], [`${p}05`, `${p}06`, `${p}07`, `${p}08`, `${p}09`, `${p}10`, `${p}11`, `${p}12`, `${p}15`, `${p}16`]);
-    addRooms(f, typeId[2], [`${p}17`, `${p}18`, `${p}19`, `${p}20`, `${p}21`, `${p}22`, `${p}23`, `${p}25`, `${p}26`, `${p}27`]);
+  let added = 0;
+  let updated = 0;
+  const wanted = new Set();
+  for (const r of rooms) {
+    const roomNo = String(r.roomNo);
+    wanted.add(roomNo);
+    const type = get('SELECT id FROM room_types WHERE name=?', r.type);
+    if (!type) throw new Error(`门店 ${store.key} 的房间 ${roomNo} 引用了不存在的房型「${r.type}」`);
+    const floor = Number(r.floor) || 1;
+    const lockNo = r.lockNo || '';
+    const remark = r.remark || '';
+    const existing = get('SELECT id FROM rooms WHERE room_no=?', roomNo);
+    if (existing) {
+      run('UPDATE rooms SET floor=?, type_id=?, lock_no=?, remark=? WHERE id=?', floor, type.id, lockNo, remark, existing.id);
+      updated++;
+    } else {
+      run('INSERT INTO rooms (room_no, floor, type_id, lock_no, remark) VALUES (?,?,?,?,?)', roomNo, floor, type.id, lockNo, remark);
+      added++;
+    }
   }
 
-  console.log('[db] 已写入种子数据');
+  // 配置里已移除的房间：默认保留（可能已被订单引用）；开启 removeMissingRooms 时也只删无引用的
+  let removed = 0;
+  if (wanted.size) {
+    const placeholders = [...wanted].map(() => '?').join(',');
+    for (const room of q(`SELECT id, room_no FROM rooms WHERE room_no NOT IN (${placeholders})`, ...wanted)) {
+      if (store.removeMissingRooms !== true) {
+        console.warn(`[sync:${store.key}] 房间 ${room.room_no} 不在配置中，已保留（removeMissingRooms=false）`);
+        continue;
+      }
+      const refs = get(
+        `SELECT (SELECT COUNT(*) FROM reservations WHERE room_id=?) +
+                (SELECT COUNT(*) FROM reservation_rooms WHERE room_id=?) +
+                (SELECT COUNT(*) FROM card_logs WHERE room_id=?) AS c`,
+        room.id, room.id, room.id
+      ).c;
+      if (refs > 0) {
+        console.warn(`[sync:${store.key}] 房间 ${room.room_no} 不在配置中但有 ${refs} 条历史引用，已保留`);
+        continue;
+      }
+      run('DELETE FROM rooms WHERE id=?', room.id);
+      removed++;
+    }
+  }
+  return { types: roomTypes.length, rooms: rooms.length, added, updated, removed };
 }
 
 // 字典默认项：仅在首次建库时播种（避免用户删除后重启复活）
@@ -469,10 +495,35 @@ function seedDicts() {
   run("INSERT OR IGNORE INTO settings (key, value) VALUES ('dicts_seeded', '1')");
 }
 
-initSchema();
-seedDicts();
-seed();
-backfillReservationRooms();
-backfillBusinessDates();
+// 启动引导：逐店建库 / 升级 schema / 播种字典 / 同步配置房间
+function bootstrapStore(store) {
+  registry.openStore(store.key);
+  return runWithStore(store.key, () => {
+    initSchema();
+    seedDicts();
+    const stat = syncStoreRooms(store);
+    backfillReservationRooms();
+    backfillBusinessDates();
+    run(
+      "INSERT INTO settings (key, value) VALUES ('store_key', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+      store.key
+    );
+    // 门店级门锁参数（跟随配置）：各店楼栋号不同，避免共用一套门锁系统时房号冲突
+    if (store.card && store.card.building != null) {
+      run("INSERT INTO settings (key, value) VALUES ('card_building', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", String(store.card.building));
+    }
+    if (store.card && store.card.sub != null) {
+      run("INSERT INTO settings (key, value) VALUES ('card_sub', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", String(store.card.sub));
+    }
+    return stat;
+  });
+}
 
-module.exports = { db, q, get, run };
+const stores = listStores();
+registry.adoptLegacy(stores.map((s) => s.key), legacyStoreKey());
+for (const s of stores) {
+  const stat = bootstrapStore(s);
+  console.log(`[db] 门店 ${s.key}（${s.name}）就绪：房型 ${stat.types}，房间 ${stat.rooms}`);
+}
+
+module.exports = { q, get, run, getDb, runWithStore, listStores };

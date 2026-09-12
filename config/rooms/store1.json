@@ -1,0 +1,798 @@
+{
+  "roomTypes": [
+    {
+      "name": "标准大床房",
+      "basePrice": 0,
+      "remark": ""
+    },
+    {
+      "name": "河景大床房",
+      "basePrice": 0,
+      "remark": ""
+    },
+    {
+      "name": "城景双床房",
+      "basePrice": 0,
+      "remark": ""
+    }
+  ],
+  "rooms": [
+    {
+      "roomNo": "1001",
+      "floor": 10,
+      "type": "标准大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1002",
+      "floor": 10,
+      "type": "标准大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1003",
+      "floor": 10,
+      "type": "标准大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1005",
+      "floor": 10,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1006",
+      "floor": 10,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1007",
+      "floor": 10,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1008",
+      "floor": 10,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1009",
+      "floor": 10,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1010",
+      "floor": 10,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1011",
+      "floor": 10,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1012",
+      "floor": 10,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1015",
+      "floor": 10,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1016",
+      "floor": 10,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1017",
+      "floor": 10,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1018",
+      "floor": 10,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1019",
+      "floor": 10,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1020",
+      "floor": 10,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1021",
+      "floor": 10,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1022",
+      "floor": 10,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1023",
+      "floor": 10,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1025",
+      "floor": 10,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1026",
+      "floor": 10,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1027",
+      "floor": 10,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1101",
+      "floor": 11,
+      "type": "标准大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1102",
+      "floor": 11,
+      "type": "标准大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1103",
+      "floor": 11,
+      "type": "标准大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1105",
+      "floor": 11,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1106",
+      "floor": 11,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1107",
+      "floor": 11,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1108",
+      "floor": 11,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1109",
+      "floor": 11,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1110",
+      "floor": 11,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1111",
+      "floor": 11,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1112",
+      "floor": 11,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1115",
+      "floor": 11,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1116",
+      "floor": 11,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1117",
+      "floor": 11,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1118",
+      "floor": 11,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1119",
+      "floor": 11,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1120",
+      "floor": 11,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1121",
+      "floor": 11,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1122",
+      "floor": 11,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1123",
+      "floor": 11,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1125",
+      "floor": 11,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1126",
+      "floor": 11,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1127",
+      "floor": 11,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1201",
+      "floor": 12,
+      "type": "标准大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1202",
+      "floor": 12,
+      "type": "标准大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1203",
+      "floor": 12,
+      "type": "标准大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1205",
+      "floor": 12,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1206",
+      "floor": 12,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1207",
+      "floor": 12,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1208",
+      "floor": 12,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1209",
+      "floor": 12,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1210",
+      "floor": 12,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1211",
+      "floor": 12,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1212",
+      "floor": 12,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1215",
+      "floor": 12,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1216",
+      "floor": 12,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1217",
+      "floor": 12,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1218",
+      "floor": 12,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1219",
+      "floor": 12,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1220",
+      "floor": 12,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1221",
+      "floor": 12,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1222",
+      "floor": 12,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1223",
+      "floor": 12,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1225",
+      "floor": 12,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1226",
+      "floor": 12,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "1227",
+      "floor": 12,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8801",
+      "floor": 8,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": "VIP预留"
+    },
+    {
+      "roomNo": "8802",
+      "floor": 8,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8803",
+      "floor": 8,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8805",
+      "floor": 8,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8806",
+      "floor": 8,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8807",
+      "floor": 8,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8808",
+      "floor": 8,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8809",
+      "floor": 8,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8810",
+      "floor": 8,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8811",
+      "floor": 8,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8812",
+      "floor": 8,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8815",
+      "floor": 8,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8816",
+      "floor": 8,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8817",
+      "floor": 8,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8818",
+      "floor": 8,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8819",
+      "floor": 8,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8820",
+      "floor": 8,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8821",
+      "floor": 8,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8822",
+      "floor": 8,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8901",
+      "floor": 9,
+      "type": "标准大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8902",
+      "floor": 9,
+      "type": "标准大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8903",
+      "floor": 9,
+      "type": "标准大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8905",
+      "floor": 9,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8906",
+      "floor": 9,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8907",
+      "floor": 9,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8908",
+      "floor": 9,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8909",
+      "floor": 9,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8910",
+      "floor": 9,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8911",
+      "floor": 9,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8912",
+      "floor": 9,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8915",
+      "floor": 9,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8916",
+      "floor": 9,
+      "type": "河景大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8917",
+      "floor": 9,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8918",
+      "floor": 9,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8919",
+      "floor": 9,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8920",
+      "floor": 9,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8921",
+      "floor": 9,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8922",
+      "floor": 9,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8923",
+      "floor": 9,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8925",
+      "floor": 9,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8926",
+      "floor": 9,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "8927",
+      "floor": 9,
+      "type": "城景双床房",
+      "lockNo": "",
+      "remark": ""
+    }
+  ]
+}

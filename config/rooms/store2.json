@@ -1,0 +1,788 @@
+{
+  "roomTypes": [
+    {
+      "name": "豪华套房",
+      "basePrice": 0,
+      "remark": "房型代码 HHT"
+    },
+    {
+      "name": "麻将套房",
+      "basePrice": 0,
+      "remark": "房型代码 mjtt"
+    },
+    {
+      "name": "深睡大床房",
+      "basePrice": 0,
+      "remark": "房型代码 SSD"
+    },
+    {
+      "name": "深睡双床房",
+      "basePrice": 0,
+      "remark": "房型代码 SSS"
+    },
+    {
+      "name": "商务套房",
+      "basePrice": 0,
+      "remark": "房型代码 SWT"
+    },
+    {
+      "name": "影音深睡大",
+      "basePrice": 0,
+      "remark": "房型代码 YYD"
+    },
+    {
+      "name": "影音深睡双",
+      "basePrice": 0,
+      "remark": "房型代码 YYS"
+    },
+    {
+      "name": "商务大床房",
+      "basePrice": 0,
+      "remark": "房型代码 SWD"
+    }
+  ],
+  "rooms": [
+    {
+      "roomNo": "300",
+      "floor": 3,
+      "type": "豪华套房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "301",
+      "floor": 3,
+      "type": "麻将套房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "302",
+      "floor": 3,
+      "type": "麻将套房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "303",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "305",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "306",
+      "floor": 3,
+      "type": "深睡双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "307",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "308",
+      "floor": 3,
+      "type": "深睡双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "310",
+      "floor": 3,
+      "type": "深睡双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "311",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "312",
+      "floor": 3,
+      "type": "深睡双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "315",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "316",
+      "floor": 3,
+      "type": "深睡双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "317",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "318",
+      "floor": 3,
+      "type": "深睡双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "319",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "320",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "321",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "322",
+      "floor": 3,
+      "type": "深睡双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "325",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "326",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "328",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "329",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "330",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "331",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "332",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "335",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "336",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "337",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "338",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "339",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "350",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "351",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "352",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "353",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "355",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "356",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "357",
+      "floor": 3,
+      "type": "深睡大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "501",
+      "floor": 5,
+      "type": "商务套房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "502",
+      "floor": 5,
+      "type": "商务套房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "503",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "505",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "506",
+      "floor": 5,
+      "type": "影音深睡双",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "507",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "508",
+      "floor": 5,
+      "type": "影音深睡双",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "510",
+      "floor": 5,
+      "type": "影音深睡双",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "511",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "512",
+      "floor": 5,
+      "type": "影音深睡双",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "515",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "516",
+      "floor": 5,
+      "type": "影音深睡双",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "517",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "518",
+      "floor": 5,
+      "type": "影音深睡双",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "519",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "520",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "521",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "522",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "525",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "526",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "528",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "529",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "530",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "531",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "532",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "535",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "536",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "537",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "538",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "539",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "550",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "551",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "552",
+      "floor": 5,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "553",
+      "floor": 5,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "555",
+      "floor": 5,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "556",
+      "floor": 5,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "557",
+      "floor": 5,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "601",
+      "floor": 6,
+      "type": "商务套房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "602",
+      "floor": 6,
+      "type": "商务套房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "603",
+      "floor": 6,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "605",
+      "floor": 6,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "606",
+      "floor": 6,
+      "type": "深睡双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "607",
+      "floor": 6,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "608",
+      "floor": 6,
+      "type": "深睡双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "610",
+      "floor": 6,
+      "type": "深睡双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "611",
+      "floor": 6,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "612",
+      "floor": 6,
+      "type": "深睡双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "615",
+      "floor": 6,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "616",
+      "floor": 6,
+      "type": "深睡双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "617",
+      "floor": 6,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "618",
+      "floor": 6,
+      "type": "深睡双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "619",
+      "floor": 6,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "620",
+      "floor": 6,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "621",
+      "floor": 6,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "622",
+      "floor": 6,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "625",
+      "floor": 6,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "626",
+      "floor": 6,
+      "type": "深睡双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "628",
+      "floor": 6,
+      "type": "深睡双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "629",
+      "floor": 6,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "630",
+      "floor": 6,
+      "type": "深睡双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "631",
+      "floor": 6,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "632",
+      "floor": 6,
+      "type": "深睡双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "635",
+      "floor": 6,
+      "type": "商务大床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "636",
+      "floor": 6,
+      "type": "深睡双床房",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "637",
+      "floor": 6,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "638",
+      "floor": 6,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "639",
+      "floor": 6,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    },
+    {
+      "roomNo": "650",
+      "floor": 6,
+      "type": "影音深睡大",
+      "lockNo": "",
+      "remark": ""
+    }
+  ]
+}

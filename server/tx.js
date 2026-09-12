@@ -1,20 +1,27 @@
-// 可嵌套事务：外层 withTx 包裹，内层事务自动降级为无操作，避免 SQLite 嵌套 BEGIN 报错
-const { db } = require('./db');
+// 可嵌套事务：外层 withTx 包裹，内层事务自动降级为无操作，避免 SQLite 嵌套 BEGIN 报错。
+// 深度必须按门店分别计数 —— 多家店共用一个进程，若共用计数器，
+// A 店的 BEGIN 会让 B 店跳过自己的事务，A 的 COMMIT/ROLLBACK 还会错结到 B 店。
+const { getDb, currentStoreKey } = require('./stores/registry');
 
-let depth = 0;
+const depths = new Map();
 
 function begin() {
-  if (depth === 0) db.exec('BEGIN');
-  depth += 1;
+  const key = currentStoreKey() || '';
+  const depth = depths.get(key) || 0;
+  if (depth === 0) getDb().exec('BEGIN');
+  depths.set(key, depth + 1);
 }
 function commit() {
-  depth -= 1;
-  if (depth === 0) db.exec('COMMIT');
+  const key = currentStoreKey() || '';
+  const depth = Math.max(0, (depths.get(key) || 1) - 1);
+  depths.set(key, depth);
+  if (depth === 0) getDb().exec('COMMIT');
 }
 function rollback() {
-  if (depth > 0) {
-    depth = 0;
-    db.exec('ROLLBACK');
+  const key = currentStoreKey() || '';
+  if ((depths.get(key) || 0) > 0) {
+    depths.set(key, 0);
+    getDb().exec('ROLLBACK');
   }
 }
 

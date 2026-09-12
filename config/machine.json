@@ -1,0 +1,9 @@
+{
+  "comment": "本机硬件配置（门锁制卡），提交进 git。一台机器只有一个读卡器/串口，故这些设置属于机器而非门店；各店的门锁楼栋号在 config/stores.json 的 card.building 中配置。",
+  "card": {
+    "enabled": true,
+    "port": 0,
+    "dbUser": "",
+    "dbPassword": ""
+  }
+}

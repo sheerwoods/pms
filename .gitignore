@@ -4,10 +4,9 @@ node_modules/
 # 构建产物
 dist/
 
-# 数据库（运行时数据，不进 git）
-data/*.db
-data/*.db-shm
-data/*.db-wal
+# 数据库与运行时数据（含 data/stores/*.db 门店订单数据、会话密钥，一律不进 git）
+data/
+data_bak_*/
 
 # 日志
 *.log

@@ -171,7 +171,6 @@
 import { ref, computed, onMounted } from 'vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import http from '../api';
-import { store } from '../store';
 import { fmtMoney, fmtDate } from '../utils/format';
 import ReservationForm from '../components/ReservationForm.vue';
 import CheckInDialog from '../components/CheckInDialog.vue';
@@ -465,7 +464,6 @@ async function doRoomCheckout(row) {
   await http.post(`/reservations/${res.id}/rooms/${unit.id}/check-out`, { actual_check_out: fmtDate() });
   ElMessage.success('该房间已退房');
   await load();
-  store.loadStats();
 }
 
 // 房号列：仅展示已排房的房号
@@ -484,7 +482,6 @@ async function doCancel(row) {
   await http.post(`/reservations/${row.id}/cancel`);
   ElMessage.success('预定已取消');
   await load();
-  store.loadStats();
 }
 async function doRestore(row) {
   try {
@@ -493,12 +490,10 @@ async function doRestore(row) {
   await http.post(`/reservations/${row.id}/restore`);
   ElMessage.success('已恢复预定');
   await load();
-  store.loadStats();
 }
 
 async function onSaved() {
   await load();
-  store.loadStats();
 }
 
 onMounted(() => { loadRoomTypes(); load(); });

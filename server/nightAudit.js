@@ -2,6 +2,8 @@
 // 规则：入住时不自动产生消费；夜审在夜审时间（默认 06:00）自动/手动为每个在住全日房
 // 补计从入住日到「昨日」之间缺失的晚次房费（最近的已完成夜晚），可重复执行（幂等）。
 const { q, get, run } = require('./db');
+const { listStores } = require('./stores/config');
+const { runWithStore } = require('./stores/registry');
 const { addFolioItem } = require('./folio');
 const { today, addDays, round2 } = require('./utils');
 const { roomRate } = require('./rates');
@@ -95,9 +97,18 @@ function isDue() {
   return getLastAuditDate() !== today();
 }
 
-// 启动定时检查（默认每 60 秒一次）；进程启动后先补一次以满足「服务器晚启动」的catch-up
+// 启动定时检查（默认每 60 秒一次）；进程启动后先补一次以满足「服务器晚启动」的catch-up。
+// 逐店独立判断：各店有各自的夜审时间与 last_audit_date，单店异常不影响其他店。
 function startScheduler(intervalMs = 60 * 1000) {
-  const check = () => { try { if (isDue()) runNightAudit(); } catch (e) { console.error('[nightAudit]', e); } };
+  const check = () => {
+    for (const store of listStores()) {
+      try {
+        runWithStore(store.key, () => { if (isDue()) runNightAudit(); });
+      } catch (e) {
+        console.error(`[nightAudit:${store.key}]`, e);
+      }
+    }
+  };
   setTimeout(check, 10 * 1000); // 启动后 10 秒首检
   setInterval(check, intervalMs);
 }

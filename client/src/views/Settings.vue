@@ -18,6 +18,9 @@
         <el-divider />
         <CardManagerPanel />
       </el-tab-pane>
+      <el-tab-pane label="夜审" name="night_audit">
+        <NightAudit />
+      </el-tab-pane>
     </el-tabs>
   </el-card>
 </template>
@@ -27,6 +30,7 @@ import { ref, onMounted } from 'vue';
 import DictManager from '../components/DictManager.vue';
 import CardSettings from '../components/CardSettings.vue';
 import CardManagerPanel from '../components/CardManagerPanel.vue';
+import NightAudit from '../components/NightAudit.vue';
 import { loadDicts } from '../utils/dict';
 
 const activeTab = ref('charge_category');

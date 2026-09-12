@@ -91,7 +91,7 @@ import http from '../api';
 
 const props = defineProps({
   visible: Boolean,
-  // { reservation_id, guest_name, check_in_date, check_out_date,
+  // { reservation_id, guest_name, check_in_date, check_in_time?, is_hourly?, check_out_date,
   //   rooms: [{ unit_id, room_id, room_no?, guest_name?, check_out_date? }] }
   payload: { type: Object, default: null },
 });
@@ -139,18 +139,40 @@ async function onOpen() {
   fillForm();
 }
 
+// 钟点房固定时长（小时），与订单/房态展示一致
+const HOURLY_HOURS = 3;
+
+function pad(n) { return String(n).padStart(2, '0'); }
+function dateTimeStr(d) {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function addHours(s, h) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(String(s || ''));
+  if (!m) return '';
+  const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+  d.setHours(d.getHours() + h);
+  return dateTimeStr(d);
+}
+
 function fillForm() {
   const p = props.payload || {};
   const c = current.value;
+  const hourly = !!p.is_hourly;
   form.guest_name = c.guest_name || p.guest_name || '';
   form.card_type = 0;
   form.special_room_list = '';
   form.floor1 = 0;
   form.floor2 = 0;
   form.floor3 = 0;
-  form.begin_time = p.check_in_date ? `${p.check_in_date} 14:00` : '';
-  const out = c.check_out_date || p.check_out_date;
-  form.end_time = out ? `${out} 12:00` : '';
+  // 开始时间：实际入住时刻 > 钟点房取当前时刻 > 入住日 14:00
+  form.begin_time = p.check_in_time || (hourly ? dateTimeStr(new Date()) : (p.check_in_date ? `${p.check_in_date} 14:00` : ''));
+  if (hourly) {
+    // 结束时间：钟点房 = 入住时刻起 3 小时
+    form.end_time = addHours(form.begin_time, HOURLY_HOURS);
+  } else {
+    const out = c.check_out_date || p.check_out_date;
+    form.end_time = out ? `${out} 12:00` : '';
+  }
 }
 
 function onSpecial(v) {

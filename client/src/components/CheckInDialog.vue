@@ -327,6 +327,8 @@ function buildCardPayload(targets, rooms) {
     reservation_id: d.id || props.reservation?.id,
     guest_name: d.guest_name || props.reservation?.guest_name || '',
     check_in_date: d.actual_check_in ? String(d.actual_check_in).slice(0, 10) : d.check_in_date,
+    check_in_time: d.actual_check_in ? String(d.actual_check_in).slice(0, 16).replace('T', ' ') : '',
+    is_hourly: d.booking_type === '钟点房',
     check_out_date: d.check_out_date,
     rooms: targets.map((t) => ({
       unit_id: t.id,

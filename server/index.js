@@ -18,6 +18,12 @@ app.use((req, res, next) => {
   next();
 });
 
+// 登录相关接口：公开，必须挂在鉴权网关之前
+app.use('/api/auth', require('./routes/auth'));
+
+// 鉴权网关：验证会话并绑定门店上下文，之后所有 /api 请求都已登录
+app.use('/api', require('./middleware/storeContext').storeContext);
+
 // 业务路由
 app.use('/api', require('./routes/rooms'));
 app.use('/api', require('./routes/reservations'));

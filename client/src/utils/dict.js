@@ -36,6 +36,12 @@ export async function loadDicts(force = false) {
   return dict;
 }
 
+// 切店/登出时清空缓存，恢复兜底候选，避免沿用上一家店的字典
+export function resetDicts() {
+  loaded = false;
+  for (const k of KINDS) dict[k] = fallback(k);
+}
+
 export function dictEntries(kind) {
   return (dict[kind] || []).filter((d) => d.status === 'active');
 }

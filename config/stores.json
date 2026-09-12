@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "comment": "门店与账号配置：提交进 git，部署时按本文件同步账号与房间数据。订单/账务数据在各店自己的数据库中，不受本文件影响。初始密码统一为 Pms@123456，请用 `npm run hash-password -- <新密码>` 生成哈希后替换。legacyStore 指定遗留 data/pms.db 归入哪家门店（仅首次启动、stores 目录为空时生效）。",
+  "legacyStore": "store1",
+  "stores": [
+    {
+      "key": "store1",
+      "name": "松岗地铁站店",
+      "enabled": true,
+      "account": {
+        "username": "songgang",
+        "displayName": "松岗地铁站店",
+        "passwordHash": "scrypt$16384$8$1$EeyISimon0YdfHjEgQLVNTL+TkkOw+SDQnFGBVBEQ2g=$phtL2o6eSZS6UxsTJ/h1dmLcZc0xhwvvBidmkBFDd8RmT/Y8TTwJmdaEvqWGdVfH1r4oH76y21BRnU05O6odYA=="
+      },
+      "roomPlanFile": "rooms/store1.json",
+      "removeMissingRooms": false,
+      "card": { "building": "01", "sub": 1 }
+    },
+    {
+      "key": "store2",
+      "name": "松明大道店",
+      "enabled": true,
+      "account": {
+        "username": "songming",
+        "displayName": "松明大道店",
+        "passwordHash": "scrypt$16384$8$1$BL3TgxKozjbkTf/gaxtoAloQTzycb7gUBGhxsxOlcOg=$CLjMCtuLzYKRCql6UQbw8GX378nCsNWG+YyBGoVHVnY7SXjLd0JBsgNe7TkLw6sW8NYU5OcNsjo2INql6jVHtg=="
+      },
+      "roomPlanFile": "rooms/store2.json",
+      "removeMissingRooms": false,
+      "card": { "building": "02", "sub": 1 }
+    },
+    {
+      "key": "store3",
+      "name": "莞樟路店",
+      "enabled": true,
+      "account": {
+        "username": "guanzhang",
+        "displayName": "莞樟路店",
+        "passwordHash": "scrypt$16384$8$1$sBPjqRsQ1WR8a9d0QAuz3Dysiq1/Iewrh9udXfEmACU=$ZgtRaZB7VfJekEUs5RrM1L1ymzxn6yl+OwVTXLPuy8STLyiTHNCsPWgZt5iM1s9yEdH7MG761ur0bmwQ24l7Qg=="
+      },
+      "roomPlanFile": "rooms/store3.json",
+      "removeMissingRooms": true,
+      "card": { "building": "03", "sub": 1 }
+    },
+    {
+      "key": "store4",
+      "name": "东莞凤深大道店",
+      "enabled": true,
+      "account": {
+        "username": "fengshen",
+        "displayName": "东莞凤深大道店",
+        "passwordHash": "scrypt$16384$8$1$V9lbE9RkF+G6jng/h8qjMPFfMGgohMo36fcCu1u38vw=$3pdeOPpeaJ+IYqg1BOQeG/9Dny5l0zplzyuyVKr150qlmyW+o8w6IBAFJTcIOajKczBZ+EuID4p+mWU/Svs9Gw=="
+      },
+      "roomPlanFile": "rooms/store4.json",
+      "removeMissingRooms": false,
+      "card": { "building": "04", "sub": 1 }
+    }
+  ]
+}

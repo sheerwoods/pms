@@ -11,7 +11,9 @@
     "dev:client": "npm --prefix client run dev",
     "build": "npm --prefix client run build",
     "build:cardtool": "node scripts/build-cardtool.js",
-    "start": "node --disable-warning=ExperimentalWarning server/index.js"
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "backup": "node scripts/backup.js",
+    "hash-password": "node scripts/hash-password.js"
   },
   "dependencies": {
     "express": "^4.19.2"

@@ -73,16 +73,13 @@
               <span class="room-no">{{ item.room.room_no }}</span>
               <span v-if="channelBadge(item)" class="channel-tag">{{ channelBadge(item) }}</span>
             </div>
+            <div class="room-type">{{ item.room.type_name }}</div>
             <template v-if="item.reservation">
-              <div class="room-type">{{ item.room.type_name }}</div>
               <div class="room-guest">{{ guestText(item) }}</div>
               <div class="card-badges">
                 <span v-for="b in badges(item)" :key="b.key" class="badge" :class="b.cls">{{ b.text }}</span>
               </div>
             </template>
-            <span class="room-status-text" :style="{ color: statusMeta(item).color }">
-              {{ statusMeta(item).text }}
-            </span>
           </div>
         </div>
       </el-card>
@@ -140,7 +137,6 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import { Fold, Expand, Search } from '@element-plus/icons-vue';
 import http from '../api';
-import { store } from '../store';
 import { fmtDate, nightsBetween, ROOM_STATUS } from '../utils/format';
 import ReservationForm from '../components/ReservationForm.vue';
 import CheckInDialog from '../components/CheckInDialog.vue';
@@ -401,7 +397,6 @@ async function doCheckout() {
     await http.post(`/reservations/${res.id}/rooms/${unitId}/check-out`, { actual_check_out: fmtDate() });
     ElMessage.success('该房间已退房');
     await load();
-    store.loadStats();
     await refreshDetail();
     return;
   }
@@ -431,11 +426,14 @@ function doCard() {
   const res = item && item.reservation;
   if (!item || !res) return;
   const checkIn = res.actual_check_in ? String(res.actual_check_in).slice(0, 10) : res.check_in_date;
+  const checkInTime = res.actual_check_in ? String(res.actual_check_in).slice(0, 16).replace('T', ' ') : '';
   const checkOut = res.unit_check_out_date || res.check_out_date;
   openCard({
     reservation_id: res.id,
     guest_name: res.unit_guest_name || res.guest_name,
     check_in_date: checkIn,
+    check_in_time: checkInTime,
+    is_hourly: res.booking_type === '钟点房',
     check_out_date: checkOut,
     rooms: [{
       unit_id: res.unit_id || null,
@@ -481,7 +479,6 @@ async function setHouseStatus(status) {
   await http.put(`/rooms/${room.id}/status`, payload);
   ElMessage.success('客房状态已更新');
   await load();
-  store.loadStats();
   // 置净/置脏/解锁后关闭信息框；维修封房、锁房保留信息框以便查看备注
   if (status === 'ooo' || status === 'locked') await refreshDetail();
   else closeDetail();
@@ -489,13 +486,11 @@ async function setHouseStatus(status) {
 
 async function onSaved() {
   await load();
-  store.loadStats();
   await refreshDetail();
 }
 
 onMounted(() => {
   load();
-  store.loadStats();
   document.addEventListener('click', onDocClick);
   document.addEventListener('keydown', onKeydown);
 });
@@ -583,10 +578,6 @@ onUnmounted(() => {
 .badge-blue { background: #1c7ed6; }
 .badge-purple { background: #7048e8; }
 .badge-orange { background: #e8590c; }
-.room-status-text {
-  position: absolute; bottom: 6px; left: 8px;
-  font-size: 11px; font-weight: 600;
-}
 
 /* 气泡详情框 */
 .room-bubble {

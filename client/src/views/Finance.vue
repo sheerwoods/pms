@@ -23,7 +23,7 @@
           </el-select>
         </div>
         <el-divider style="margin: 12px 0" />
-        <FolioPanel v-if="selectedResId" :key="selectedResId" :reservation-id="selectedResId" @changed="loadStats" />
+        <FolioPanel v-if="selectedResId" :key="selectedResId" :reservation-id="selectedResId" />
         <el-empty v-else description="请选择一笔订单查看客账" :image-size="80" />
       </el-tab-pane>
 
@@ -354,7 +354,6 @@
 import { ref, reactive, computed, watch, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import http from '../api';
-import { store } from '../store';
 import { fmtMoney, fmtDate, RES_STATUS } from '../utils/format';
 import { nonArMethods } from '../utils/dict';
 import { moneyView, balanceView, itemKindOf, itemKindText } from '../utils/money';
@@ -411,7 +410,6 @@ async function removeTx(row) {
   } catch (e) { return; }
   ElMessage.success('已冲销');
   await loadTx();
-  store.loadStats();
 }
 
 // ---- AR 账户 ----
@@ -581,7 +579,6 @@ async function submitTransfer() {
     ElMessage.success('已转账');
     transferVisible.value = false;
     await Promise.all([loadArAccounts(), loadAcctDetail(acctDetail.value.account.id)]);
-    store.loadStats();
   } catch (e) {
     /* 已提示 */
   } finally {
@@ -615,7 +612,6 @@ async function submitReceipt() {
     ElMessage.success(receiptForm.entry_ids.length ? '已结账' : (receiptForm.entry_id ? '已核销' : '已回款'));
     receiptVisible.value = false;
     await Promise.all([loadArAccounts(), loadAcctDetail(acctDetail.value.account.id)]);
-    store.loadStats();
   } catch (e) {
     /* 已提示 */
   } finally {
@@ -635,10 +631,6 @@ async function loadReport() {
 function barHeight(v) {
   const max = Math.max(...report.value.daily.map((d) => Math.max(d.room, d.extra, d.payment)), 1);
   return Math.max(2, Math.round((Math.abs(v) / max) * 130)) + 'px';
-}
-
-function loadStats() {
-  store.loadStats();
 }
 
 onMounted(() => {
